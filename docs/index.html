@@ -33,10 +33,7 @@
     <meta property="og:locale" content="en_US" />
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="KArkive — Kubernetes operator for logical backups" />
-    <meta
-      name="twitter:description"
-      content="Scheduled logical backups and restores, declared as Kubernetes CRs."
-    />
+    <meta name="twitter:description" content="Scheduled logical backups and restores, declared as Kubernetes CRs." />
     <link rel="stylesheet" href="styles.css" />
     <script type="application/ld+json">
       {
@@ -56,154 +53,186 @@
     <a class="skip" href="#main">Skip to content</a>
 
     <header class="nav">
-      <a class="brand" href="#top" aria-label="KArkive home">
-        <svg class="mark" viewBox="0 0 64 64" fill="none" aria-hidden="true">
-          <path d="M32 6.5 54 19.2v25.6L32 57.5 10 44.8V19.2L32 6.5Z" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
-          <rect x="20" y="21.6" width="24" height="5.5" rx="1.2" fill="currentColor"/>
-          <rect x="22.5" y="29.8" width="19" height="5.5" rx="1.2" fill="currentColor" opacity=".72"/>
-          <rect x="25" y="38" width="14" height="5.5" rx="1.2" fill="currentColor" opacity=".44"/>
-        </svg>
-        <span>KArkive</span>
-      </a>
-      <nav aria-label="Primary">
-        <a href="#how">How it works</a>
-        <a href="#engines">Engines</a>
-        <a href="#monitoring">Monitoring</a>
-        <a href="#install">Install</a>
-        <a class="gh" href="https://github.com/mahdidarabi/karkive">
+      <div class="nav-inner">
+        <a class="brand" href="#top" aria-label="KArkive home">
+          <svg class="mark" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+            <path d="M32 6.5 54 19.2v25.6L32 57.5 10 44.8V19.2L32 6.5Z" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" />
+            <rect x="20" y="21.6" width="24" height="5.5" rx="1.2" fill="currentColor" />
+            <rect x="22.5" y="29.8" width="19" height="5.5" rx="1.2" fill="currentColor" opacity=".72" />
+            <rect x="25" y="38" width="14" height="5.5" rx="1.2" fill="currentColor" opacity=".44" />
+          </svg>
+          <span>KArkive</span>
+        </a>
+        <nav aria-label="Primary">
+          <a href="#how">How it works</a>
+          <a href="#api">API</a>
+          <a href="#engines">Engines</a>
+          <a href="#monitoring">Monitoring</a>
+          <a href="#install">Install</a>
+        </nav>
+        <a class="gh" href="https://github.com/mahdidarabi/karkive" aria-label="KArkive on GitHub">
           <svg class="gh-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path fill="currentColor" d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.74.08-.74 1.2.08 1.84 1.23 1.84 1.23 1.07 1.83 2.8 1.3 3.48.99.11-.77.42-1.3.76-1.6-2.66-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.66.24 2.88.12 3.18a4.7 4.7 0 0 1 1.24 3.22c0 4.61-2.81 5.62-5.49 5.92.43.37.81 1.1.81 2.22v3.28c0 .32.22.69.83.57A12 12 0 0 0 12 .5Z"/>
+            <path fill="currentColor" d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.74.08-.74 1.2.08 1.84 1.23 1.84 1.23 1.07 1.83 2.8 1.3 3.48.99.11-.77.42-1.3.76-1.6-2.66-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.66.24 2.88.12 3.18a4.7 4.7 0 0 1 1.24 3.22c0 4.61-2.81 5.62-5.49 5.92.43.37.81 1.1.81 2.22v3.28c0 .32.22.69.83.57A12 12 0 0 0 12 .5Z" />
           </svg>
           <span>GitHub</span>
         </a>
-      </nav>
+      </div>
     </header>
 
     <main id="main">
-      <section class="hero" id="top">
-        <p class="eyebrow">Kubernetes operator · <code>karkive.io/v1alpha1</code></p>
-        <h1>You declare a <em>Backup</em>.<br />KArkive runs the archive.</h1>
-        <p class="lede">
-          Scheduled logical backups and restores, in-cluster. A CR becomes a ConfigMap,
-          optional PVC, and CronJob that dump (or tar a PVC), gzip, GPG-encrypt, and sync
-          to S3 — and the reverse on restore.
-        </p>
-        <div class="cta">
-          <a class="btn btn-primary" href="#install">Install with Helm</a>
-          <a class="btn btn-ghost" href="https://github.com/mahdidarabi/karkive">View the source</a>
-        </div>
-        <div class="code-wrap hero-term">
-          <div class="code-bar">
-            <span>install</span>
-            <button type="button" class="copy" data-copy="#helm-install" aria-label="Copy Helm install">Copy</button>
-          </div>
-          <pre tabindex="0"><code>helm install karkive oci://ghcr.io/mahdidarabi/charts/karkive \
-  --version 0.1.0 \
-  -n karkive-system --create-namespace</code></pre>
-        </div>
-        <ul class="engines-row" aria-label="Supported engines">
-          <li>PostgreSQL</li>
-          <li>MariaDB</li>
-          <li>Redis</li>
-          <li>PVC files</li>
-        </ul>
-        <ul class="capability-strip" aria-label="KArkive capabilities">
-          <li><strong>2</strong><span>CRDs</span></li>
-          <li><strong>5</strong><span>pipeline stages</span></li>
-          <li><strong>S3</strong><span>or local retention</span></li>
-          <li><strong>24/7</strong><span>observable</span></li>
-        </ul>
-      </section>
-
-      <section class="panel pipeline" id="how">
-        <div class="section-head">
-          <p class="eyebrow">How it works</p>
-          <h2>A CR. Owned jobs. A pipeline you can read.</h2>
-          <p>
-            The operator never shells out from the controller. It admits resources, then
-            a Job runs the stages — one container each, in order.
+      <!-- Hero -->
+      <section class="hero wrap" id="top">
+        <div class="hero-copy">
+          <p class="eyebrow">Kubernetes operator · <code>karkive.io/v1alpha1</code></p>
+          <h1><span class="nb">You declare a <em>Backup</em>.</span><br />KArkive runs the archive.</h1>
+          <p class="lede">
+            Scheduled logical backups and restores, in-cluster. Each CR becomes a CronJob whose pod dumps, compresses, GPG-encrypts and syncs to S3, and runs the same pipeline in reverse to restore.
           </p>
+          <div class="cta">
+            <a class="btn btn-primary" href="#install">Install with Helm</a>
+            <a class="btn btn-ghost" href="https://github.com/mahdidarabi/karkive">View the source</a>
+          </div>
+          <ul class="engines-row" aria-label="Supported engines">
+            <li>PostgreSQL</li>
+            <li>MariaDB</li>
+            <li>Redis</li>
+            <li>PVC files</li>
+          </ul>
         </div>
 
-        <div class="flow">
-          <ol class="flow-main">
-            <li>
-              <span class="flow-k">CR</span>
-              <span>Backup / Restore</span>
-            </li>
-            <li>
-              <span class="flow-k">Op</span>
-              <span>KArkive reconciles</span>
-            </li>
-            <li>
-              <span class="flow-k">Own</span>
-              <span>ConfigMap · PVC · CronJob</span>
-            </li>
-            <li>
-              <span class="flow-k">Job</span>
-              <span>Pipeline pod</span>
-            </li>
+        <figure class="term" aria-label="Example backup run">
+          <div class="term-bar">
+            <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="term-title">karkive-backup-app-postgres</span>
+            <button type="button" class="replay" data-replay aria-label="Replay the example run">Replay</button>
+          </div>
+          <ol class="term-stages" aria-label="Pipeline stages">
+            <li data-stage="0">cleanup</li>
+            <li data-stage="1">pgdump</li>
+            <li data-stage="2">compress</li>
+            <li data-stage="3">encrypt</li>
+            <li data-stage="4">s3-sync</li>
           </ol>
+          <pre class="term-log" tabindex="0"><code><span class="p">$</span> kubectl get bak app-postgres
+<span class="dim">NAME           ENGINE     SCHEDULE      PHASE   SUCCEEDED</span>
+app-postgres   postgres   0 2 * * *     Ready   <span class="ok">True</span>
+
+<span class="line" data-at="0"><span class="tag">cleanup </span> local retention 7 days, pruned 1 old dump</span>
+<span class="line" data-at="1"><span class="tag">pgdump  </span> pg_dump app → 20.4 GB</span>
+<span class="line" data-at="2"><span class="tag">compress</span> gzip → 1.78 GB</span>
+<span class="line" data-at="3"><span class="tag">encrypt </span> gpg → pg_dump-app-….pgdump.gz.gpg</span>
+<span class="line" data-at="4"><span class="tag">s3-sync </span> mirror → s3://backups/app/pgdump/</span>
+<span class="line" data-at="4"><span class="tag">s3-sync </span> pruned objects older than 14d</span>
+<span class="line done" data-at="5"><span class="ok">✓</span> Job succeeded · BackupSucceeded=True</span></code></pre>
+        </figure>
+      </section>
+
+      <!-- Principles -->
+      <section class="wrap principles" aria-label="Design principles">
+        <article>
+          <h2>Secrets stay yours</h2>
+          <p>The operator never creates or mutates a Secret. It only reads the one you name in <code>spec.secretRef</code>.</p>
+        </article>
+        <article>
+          <h2>Shell you can read</h2>
+          <p>Every stage is a short POSIX script in its own container. No agent in your database, no custom format.</p>
+        </article>
+        <article>
+          <h2>Standard artifacts</h2>
+          <p>Dumps are plain <code>pg_dump</code>, <code>mysqldump</code>, RDB or <code>tar</code>, gzip and GPG. You can restore without KArkive.</p>
+        </article>
+        <article>
+          <h2>Uploads are not undone</h2>
+          <p>S3 retention prune is best effort: a flaky delete is retried and logged, never a failed backup.</p>
+        </article>
+      </section>
+
+      <!-- How it works -->
+      <section class="wrap section" id="how">
+        <header class="section-head">
+          <p class="eyebrow">How it works</p>
+          <h2>A CR. Owned objects. A pipeline in one pod.</h2>
+          <p>The controller never shells out. It reconciles owned resources; the Job pod runs the stages, one container each, handing off through marker files on a shared volume. If one stage fails, the others stop.</p>
+        </header>
+
+        <ol class="flow" aria-label="Reconcile flow">
+          <li><span class="flow-k">1</span><strong>Backup / Restore CR</strong><span>Admitted by validating webhooks</span></li>
+          <li><span class="flow-k">2</span><strong>KArkive reconciles</strong><span>Status, metrics, owner refs</span></li>
+          <li><span class="flow-k">3</span><strong>ConfigMap · PVC · CronJob</strong><span>Named <code>karkive-backup-&lt;name&gt;</code></span></li>
+          <li><span class="flow-k">4</span><strong>Pipeline pod</strong><span>One container per stage</span></li>
+        </ol>
+
+        <div class="pipeline" data-tabs>
+          <div class="tabs" role="tablist" aria-label="Pipeline direction">
+            <button type="button" role="tab" id="tab-pb" aria-controls="panel-pb" aria-selected="true">Backup</button>
+            <button type="button" role="tab" id="tab-pr" aria-controls="panel-pr" aria-selected="false" tabindex="-1">Restore</button>
+          </div>
+          <div class="tab-panel" role="tabpanel" id="panel-pb" aria-labelledby="tab-pb">
+            <ol class="stages">
+              <li><b>cleanup</b><span>Clears markers, prunes local dumps past <code>localRetentionDays</code></span><small>busybox</small></li>
+              <li><b>dump</b><span><code>pg_dump</code>, <code>mysqldump</code>, <code>redis-cli --rdb</code> or <code>tar</code> of a PVC</span><small>engine image</small></li>
+              <li><b>compress</b><span>gzip of the dump or archive</span><small>busybox</small></li>
+              <li><b>encrypt</b><span>Symmetric GPG with <code>gpg_passphrase</code></span><small>gpg</small></li>
+              <li><b>s3-sync</b><span>Mirror to S3, then prune objects past <code>retentionDays</code></span><small>minio/mc</small></li>
+            </ol>
+            <p class="note">Set <code>spec.s3.enabled: false</code> to skip <code>s3-sync</code> and keep encrypted dumps in <code>retained/</code> on the PVC.</p>
+          </div>
+          <div class="tab-panel" role="tabpanel" id="panel-pr" aria-labelledby="tab-pr" hidden>
+            <ol class="stages">
+              <li><b>cleanup</b><span>Clears the workdir and markers</span><small>busybox</small></li>
+              <li><b>fetch</b><span>Named object, or the newest dump with <code>useLatestBackupAsFallback</code></span><small>minio/mc</small></li>
+              <li><b>decrypt</b><span>GPG with the same passphrase</span><small>gpg</small></li>
+              <li><b>extract</b><span>gunzip to a plain dump</span><small>busybox</small></li>
+              <li><b>restore</b><span><code>psql</code>, <code>mariadb</code>, or <code>REPLICAOF</code> from an ephemeral Redis</span><small>engine image</small></li>
+            </ol>
+            <p class="note">Restore reads S3 and GPG keys from <code>secretRef</code> and target credentials from a separate engine Secret.</p>
+          </div>
         </div>
 
-        <div class="stages">
+        <div class="runtime">
           <article>
-            <h3>Backup</h3>
-            <ol>
-              <li>cleanup</li>
-              <li>dump</li>
-              <li>compress</li>
-              <li>encrypt</li>
-              <li>s3-sync</li>
-            </ol>
-            <p>Skip <code>s3-sync</code> when <code>spec.s3.enabled</code> is false; encrypted dumps stay on the PVC. For <code>engine: pvc</code>, dump is <code>tar</code> of the source claim.</p>
+            <h3><code>CronJob</code> <span class="pill">default</span></h3>
+            <p>A new Job pod each run. Simple, and fine when the volume attaches quickly.</p>
           </article>
           <article>
-            <h3>Restore</h3>
-            <ol>
-              <li>cleanup</li>
-              <li>fetch</li>
-              <li>decrypt</li>
-              <li>extract</li>
-              <li>restore</li>
-            </ol>
-            <p>Target credentials come from an engine secret, not from the S3/GPG <code>secretRef</code>.</p>
+            <h3><code>CronJobWithVolumeHolder</code></h3>
+            <p>A pause Deployment keeps an RWO claim attached to one node; Job pods land beside it with pod affinity.</p>
           </article>
         </div>
       </section>
 
-      <section class="declare" id="declare">
+      <!-- API -->
+      <section class="wrap section declare" id="api">
         <div class="declare-copy">
           <p class="eyebrow">API</p>
           <h2>Write YAML you already know.</h2>
-          <p>
-            <code>Backup</code> and <code>Restore</code> are namespaced CRs. Short names:
-            <code>kbackup</code> / <code>bak</code>, <code>krestore</code> / <code>res</code>.
-          </p>
-          <ul class="facts">
-            <li>
-              <strong>Secrets stay yours.</strong>
-              The operator never creates or mutates them. It only reads
-              <code>spec.secretRef</code> (and the engine restore secret) in the CR namespace.
-            </li>
-            <li>
-              <strong>Names are kind-prefixed.</strong>
-              Owned objects are <code>karkive-backup-&lt;name&gt;</code> and
-              <code>karkive-restore-&lt;name&gt;</code>, so both CRs can share a name.
-            </li>
-            <li>
-              <strong>Ready is not last-job.</strong>
-              <code>status.phase</code> is admission of owned resources.
-              Last Job outcome is <code>BackupSucceeded</code> / <code>RestoreSucceeded</code>.
-            </li>
-          </ul>
+          <p><code>Backup</code> and <code>Restore</code> are namespaced CRs. Short names <code>kbackup</code> / <code>bak</code> and <code>krestore</code> / <code>res</code>.</p>
+          <dl class="facts">
+            <div>
+              <dt>Kind-prefixed names</dt>
+              <dd>Owned objects are <code>karkive-backup-&lt;name&gt;</code> and <code>karkive-restore-&lt;name&gt;</code>, so a Backup and a Restore can share a name.</dd>
+            </div>
+            <div>
+              <dt>Ready is not last job</dt>
+              <dd><code>status.phase</code> means owned resources are in place. The last run is the <code>BackupSucceeded</code> / <code>RestoreSucceeded</code> condition.</dd>
+            </div>
+            <div>
+              <dt>Manual runs</dt>
+              <dd>Suspend the schedule and keep the CronJob, then <code>kubectl create job --from=cronjob/…</code> when you mean it.</dd>
+            </div>
+          </dl>
         </div>
-        <div class="code-wrap">
+
+        <div class="code-wrap" data-tabs>
           <div class="code-bar">
-            <span>backup.yaml</span>
-            <button type="button" class="copy" data-copy="#backup-yaml" aria-label="Copy Backup example">Copy</button>
+            <div class="tabs" role="tablist" aria-label="Example manifests">
+              <button type="button" role="tab" id="tab-yb" aria-controls="panel-yb" aria-selected="true">backup.yaml</button>
+              <button type="button" role="tab" id="tab-yr" aria-controls="panel-yr" aria-selected="false" tabindex="-1">restore.yaml</button>
+              <button type="button" role="tab" id="tab-ys" aria-controls="panel-ys" aria-selected="false" tabindex="-1">secret.yaml</button>
+            </div>
+            <button type="button" class="copy" data-copy-active aria-label="Copy the selected manifest">Copy</button>
           </div>
-          <pre id="backup-yaml" tabindex="0"><code><span class="k">apiVersion</span>: karkive.io/v1alpha1
+          <pre class="tab-panel" role="tabpanel" id="panel-yb" aria-labelledby="tab-yb" tabindex="0"><code><span class="k">apiVersion</span>: karkive.io/v1alpha1
 <span class="k">kind</span>: Backup
 <span class="k">metadata</span>:
   <span class="k">name</span>: app-postgres
@@ -217,265 +246,221 @@
     <span class="k">endpoint</span>: https://s3.example.com
     <span class="k">bucket</span>: backups
     <span class="k">path</span>: app/pgdump
+    <span class="k">retentionDays</span>: 14
   <span class="k">secretRef</span>:
     <span class="k">name</span>: backup-app-postgres</code></pre>
+          <pre class="tab-panel" role="tabpanel" id="panel-yr" aria-labelledby="tab-yr" tabindex="0" hidden><code><span class="k">apiVersion</span>: karkive.io/v1alpha1
+<span class="k">kind</span>: Restore
+<span class="k">metadata</span>:
+  <span class="k">name</span>: app-postgres
+<span class="k">spec</span>:
+  <span class="k">engine</span>: postgres
+  <span class="k">schedule</span>: <span class="s">"30 2 * * *"</span>
+  <span class="k">suspend</span>: true  <span class="c"># run on demand</span>
+  <span class="k">database</span>:
+    <span class="k">host</span>: sandbox.example.svc
+    <span class="k">name</span>: app
+  <span class="k">s3</span>:
+    <span class="k">endpoint</span>: https://s3.example.com
+    <span class="k">bucket</span>: backups
+    <span class="k">path</span>: app/pgdump
+  <span class="k">secretRef</span>:
+    <span class="k">name</span>: restore-app-postgres
+  <span class="k">postgresSecret</span>:
+    <span class="k">name</span>: sandbox-postgres
+  <span class="k">useLatestBackupAsFallback</span>: true</code></pre>
+          <pre class="tab-panel" role="tabpanel" id="panel-ys" aria-labelledby="tab-ys" tabindex="0" hidden><code><span class="k">apiVersion</span>: v1
+<span class="k">kind</span>: Secret
+<span class="k">metadata</span>:
+  <span class="k">name</span>: backup-app-postgres
+<span class="k">type</span>: Opaque
+<span class="k">stringData</span>:
+  <span class="k">username</span>: app
+  <span class="k">password</span>: change-me
+  <span class="k">s3_access_key</span>: change-me
+  <span class="k">s3_secret_key</span>: change-me
+  <span class="k">gpg_passphrase</span>: change-me</code></pre>
         </div>
       </section>
 
-      <section class="engines" id="engines">
-        <div class="section-head">
+      <!-- Engines -->
+      <section class="wrap section" id="engines">
+        <header class="section-head">
           <p class="eyebrow">Engines</p>
           <h2>Three logical dumps and a file archive. One CR shape.</h2>
-        </div>
+        </header>
         <div class="engine-grid">
           <article>
             <h3>PostgreSQL</h3>
-            <p><code>pg_dump</code> in, <code>pgrestore</code> out. Defaults to CloudNativePG PostgreSQL 18.4. Optional pgAudit extension and event-trigger strip on restore.</p>
+            <p><code>pg_dump</code> in, <code>psql</code> out, on CloudNativePG images. Detects TimescaleDB, and can strip pgAudit DDL on restore.</p>
+            <span class="tag-row"><span>backup</span><span>restore</span></span>
           </article>
           <article>
             <h3>MariaDB</h3>
-            <p><code>mysqldump</code> with utf8mb4 / hex-blob. Restore recreates the schema and strips GTID/DEFINER noise.</p>
+            <p><code>mysqldump</code> with utf8mb4 and hex-blob. Restore recreates the schema and strips GTID and DEFINER noise.</p>
+            <span class="tag-row"><span>backup</span><span>restore</span></span>
           </article>
           <article>
             <h3>Redis</h3>
-            <p><code>redis-cli --rdb</code> on backup. Restore loads an ephemeral <code>redis-server</code> and <code>REPLICAOF</code> into the target.</p>
+            <p><code>redis-cli --rdb</code> on backup. Restore loads an ephemeral <code>redis-server</code> and has the target <code>REPLICAOF</code> it.</p>
+            <span class="tag-row"><span>backup</span><span>restore</span></span>
           </article>
           <article>
             <h3>PVC files</h3>
-            <p>GNU <code>tar</code> of an existing claim, mounted read-only. <code>consumerSelector</code> lands the Job on the app's node for RWO claims. Backup only.</p>
+            <p>GNU <code>tar</code> of an existing claim, mounted read-only. <code>consumerSelector</code> places the Job beside the pod that owns an RWO claim.</p>
+            <span class="tag-row"><span>backup</span></span>
           </article>
         </div>
       </section>
 
-      <section class="traits">
-        <div class="section-head">
-          <p class="eyebrow">In production</p>
-          <h2>Webhooks, metrics, Helm — not a sidecar script.</h2>
-        </div>
-        <ul class="trait-list">
-          <li>
-            <h3>Validating webhooks</h3>
-            <p>Reject bad cron, missing engine secrets, and incomplete specs before they land.</p>
-          </li>
-          <li>
-            <h3>Prometheus + Grafana</h3>
-            <p>Per-CR ready/suspend, last success, last-job failure and duration. Optional ServiceMonitor, PrometheusRule, dashboard ConfigMap.</p>
-          </li>
-          <li>
-            <h3>Retention both ways</h3>
-            <p>S3 object retention and local encrypted dumps on the PVC. Persistence can be swapped for emptyDir.</p>
-          </li>
-          <li>
-            <h3>Manual runs</h3>
-            <p>Keep the CronJob, suspend the schedule, then <code>kubectl create job --from=…</code> when you mean it.</p>
-          </li>
-        </ul>
-      </section>
-
-      <section class="monitoring" id="monitoring">
-        <div class="section-head">
+      <!-- Monitoring -->
+      <section class="wrap section" id="monitoring">
+        <header class="section-head">
           <p class="eyebrow">Observability</p>
           <h2>Know the state of every archive.</h2>
-          <p>
-            KArkive exposes Prometheus metrics per namespace, name, and engine. The Helm
-            chart can install a ServiceMonitor, alert rules, and this ready-to-import Grafana dashboard.
-            One Prometheus for several clusters? Name the label that tells them apart and the
-            dashboard keeps them apart too.
-          </p>
-        </div>
+          <p>Prometheus metrics per namespace, name and engine. The chart can install a ServiceMonitor, alert rules and this Grafana dashboard. One Prometheus for many clusters? Name the label that tells them apart and the dashboard keeps them apart.</p>
+        </header>
 
-        <div class="dashboard" aria-label="Preview of the KArkive Grafana dashboard">
-          <div class="dashboard-head">
+        <div class="dashboard" aria-label="Preview of the KArkive Grafana dashboard (sample data)">
+          <div class="dash-head">
             <div>
               <span class="dash-kicker">Dashboards / KArkive</span>
               <strong>Backup &amp; restore overview</strong>
             </div>
-            <div class="dash-controls">
-              <span class="dash-select">All clusters <b>⌄</b></span>
-              <span class="dash-select">All namespaces <b>⌄</b></span>
-              <span class="dash-select">All engines <b>⌄</b></span>
+            <div class="dash-controls" aria-hidden="true">
+              <span class="dash-select">cluster: All</span>
+              <span class="dash-select">namespace: All</span>
+              <span class="dash-select">engine: All</span>
               <span class="dash-time">Last 24 hours</span>
             </div>
           </div>
 
           <div class="dash-stats">
-            <article class="dash-stat">
-              <span>Backups ready</span>
-              <strong>12 <small>/ 12</small></strong>
-              <i class="good">● synced</i>
-            </article>
-            <article class="dash-stat">
-              <span>Restores ready</span>
-              <strong>3 <small>/ 3</small></strong>
-              <i class="good">● synced</i>
-            </article>
-            <article class="dash-stat">
-              <span>Last job failed</span>
-              <strong>0</strong>
-              <i class="good">● healthy</i>
-            </article>
-            <article class="dash-stat">
-              <span>Stale backups</span>
-              <strong>0</strong>
-              <i class="good">● within policy</i>
-            </article>
-            <article class="dash-stat">
-              <span>Suspended</span>
-              <strong>2</strong>
-              <i class="paused">● paused by spec</i>
-            </article>
+            <article class="dash-stat"><span>Backups ready</span><strong>12<small> / 12</small></strong><i class="good">✓ synced</i></article>
+            <article class="dash-stat"><span>Restores ready</span><strong>3<small> / 3</small></strong><i class="good">✓ synced</i></article>
+            <article class="dash-stat"><span>Last job failed</span><strong>0</strong><i class="good">✓ healthy</i></article>
+            <article class="dash-stat"><span>Stale backups</span><strong>0</strong><i class="good">✓ within 36h</i></article>
+            <article class="dash-stat"><span>Suspended</span><strong>2</strong><i class="paused">⏸ by spec</i></article>
           </div>
 
           <div class="dash-charts">
             <article class="dash-card">
               <div class="dash-card-head"><span>Last job duration</span><small>seconds</small></div>
-              <svg class="chart" viewBox="0 0 520 148" role="img" aria-label="Backup job duration trend">
-                <path class="grid-line" d="M0 22H520M0 58H520M0 94H520M0 130H520"/>
-                <path class="chart-fill" d="M0 111 C35 108 42 91 72 98 S110 84 140 91 S178 66 205 79 S243 67 270 75 S305 42 336 59 S370 54 402 61 S440 24 466 42 S498 25 520 32 V148H0Z"/>
-                <path class="chart-line" d="M0 111 C35 108 42 91 72 98 S110 84 140 91 S178 66 205 79 S243 67 270 75 S305 42 336 59 S370 54 402 61 S440 24 466 42 S498 25 520 32"/>
-                <text x="4" y="145">00:00</text><text x="245" y="145">12:00</text><text x="485" y="145">now</text>
-              </svg>
-              <div class="chart-legend"><span><i class="legend-brass"></i>Backup</span><span><i class="legend-blue"></i>Restore</span><b>max 74s</b></div>
+              <div class="legend" aria-hidden="true"><span><i class="sw sw-backup"></i>Backup</span><span><i class="sw sw-restore"></i>Restore</span></div>
+              <div class="chart" data-chart="duration" role="img" aria-label="Last job duration over 24 hours for backup and restore jobs"></div>
             </article>
             <article class="dash-card">
               <div class="dash-card-head"><span>Time since last success</span><small>hours</small></div>
-              <svg class="chart" viewBox="0 0 520 148" role="img" aria-label="Time since last successful backup trend">
-                <path class="grid-line" d="M0 22H520M0 58H520M0 94H520M0 130H520"/>
-                <path class="threshold" d="M0 76H520"/>
-                <path class="chart-fill blue-fill" d="M0 112 C36 108 54 105 85 99 S140 88 170 94 S216 76 250 84 S294 62 324 74 S365 55 394 63 S442 49 470 56 S500 37 520 44 V148H0Z"/>
-                <path class="chart-line blue-line" d="M0 112 C36 108 54 105 85 99 S140 88 170 94 S216 76 250 84 S294 62 324 74 S365 55 394 63 S442 49 470 56 S500 37 520 44"/>
-                <text x="4" y="145">00:00</text><text x="245" y="145">12:00</text><text x="485" y="145">now</text>
-              </svg>
-              <div class="chart-legend"><span><i class="legend-blue"></i>Oldest success</span><span class="threshold-key">36h stale alert</span><b>18h 24m</b></div>
+              <div class="legend" aria-hidden="true"><span><i class="sw sw-backup"></i>Oldest backup</span><span><i class="sw sw-threshold"></i>36h stale alert</span></div>
+              <div class="chart" data-chart="age" role="img" aria-label="Hours since the oldest successful backup over 24 hours, against a 36 hour stale threshold"></div>
             </article>
           </div>
 
-          <div class="dash-table">
-            <div class="dash-card-head"><span>Last job</span><small>live from Prometheus</small></div>
-            <div class="job-row job-labels"><span>Kind / Name</span><span>Engine</span><span>Outcome</span><span>Duration</span><span>Success age</span></div>
-            <div class="job-row"><span><b>Backup</b> · app-postgres</span><span>postgres</span><span class="status success">Succeeded</span><span>42s</span><span>2h 14m</span></div>
-            <div class="job-row"><span><b>Backup</b> · cache-redis</span><span>redis</span><span class="status success">Succeeded</span><span>8s</span><span>5h 02m</span></div>
-            <div class="job-row"><span><b>Restore</b> · staging-db</span><span>mariadb</span><span class="status success">Succeeded</span><span>61s</span><span>19h 41m</span></div>
+          <div class="dash-table" role="table" aria-label="Last job per CR (sample data)">
+            <div class="dash-card-head"><span>Last job</span><small>sample data</small></div>
+            <div class="job-row job-labels" role="row"><span role="columnheader">Kind / name</span><span role="columnheader">Engine</span><span role="columnheader">Outcome</span><span role="columnheader">Duration</span><span role="columnheader">Success age</span></div>
+            <div class="job-row" role="row"><span role="cell"><b>Backup</b> app-postgres</span><span role="cell">postgres</span><span role="cell" class="status success">✓ Succeeded</span><span role="cell">42s</span><span role="cell">2h 14m</span></div>
+            <div class="job-row" role="row"><span role="cell"><b>Backup</b> cache-redis</span><span role="cell">redis</span><span role="cell" class="status success">✓ Succeeded</span><span role="cell">8s</span><span role="cell">5h 02m</span></div>
+            <div class="job-row" role="row"><span role="cell"><b>Restore</b> staging-db</span><span role="cell">mariadb</span><span role="cell" class="status success">✓ Succeeded</span><span role="cell">61s</span><span role="cell">19h 41m</span></div>
           </div>
+
+          <details class="chart-data">
+            <summary>Chart data as a table</summary>
+            <div class="chart-data-body" data-chart-table></div>
+          </details>
         </div>
 
-        <div class="monitoring-foot">
-          <p>
-            <strong>Included alert coverage:</strong> not Ready, failed Job, aging or stale Backup,
-            no finished Job, and missed CronJob schedule.
-          </p>
-          <a href="https://github.com/mahdidarabi/karkive/blob/main/charts/karkive/dashboards/karkive.json">View dashboard JSON ↗</a>
-        </div>
-
-        <div class="grafana-setup">
-          <div class="grafana-setup-head">
-            <p class="eyebrow">Grafana setup</p>
-            <h3>Connect the dashboard in three steps.</h3>
-          </div>
-          <ol class="setup-steps">
-            <li>
-              <strong><span>01</span> Scrape KArkive</strong>
-              <p>Use the Prometheus Operator integration or scrape the metrics Service at <code>/metrics</code> on port <code>8080</code>.</p>
-            </li>
-            <li>
-              <strong><span>02</span> Add the dashboard</strong>
-              <p>Enable the Grafana sidecar, or import <code>karkive.json</code> manually and select your Prometheus datasource.</p>
-            </li>
-            <li>
-              <strong><span>03</span> Keep the filters</strong>
-              <p>The dashboard uses <code>$namespace</code>, <code>$engine</code>, and a <code>30s</code> refresh to follow every CR. Set <code>sourceLabel</code> to add a <code>$source</code> filter for many clusters in one Prometheus.</p>
-            </li>
-          </ol>
-          <p class="grafana-hint">
-            Helm switches:
-            <code>metrics.serviceMonitor.enabled=true</code>
-            <code>metrics.grafanaDashboard.enabled=true</code>
-            <code>metrics.grafanaDashboard.sourceLabel=cluster</code>
-            <span>Default dashboard label: <code>grafana_dashboard: "1"</code>. <code>sourceLabel</code> is empty by default; set it to your cluster label (<code>cluster</code>, <code>k8s_cluster</code>, …).</span>
-          </p>
+        <div class="monitor-grid">
+          <article>
+            <h3>Alerts included</h3>
+            <ul>
+              <li>CR not Ready for 15 minutes</li>
+              <li>Last Job failed</li>
+              <li>Backup aging (8h) or stale (36h)</li>
+              <li>CronJob scheduled but no Job finished</li>
+              <li>Missed CronJob schedule</li>
+            </ul>
+          </article>
+          <article>
+            <h3>Turn it on</h3>
+            <ol class="steps">
+              <li>Scrape <code>/metrics</code> on <code>:8080</code>, or <code>metrics.serviceMonitor.enabled=true</code></li>
+              <li>Ship the dashboard with <code>metrics.grafanaDashboard.enabled=true</code> or import <code>karkive.json</code></li>
+              <li>Many clusters, one Prometheus: <code>metrics.grafanaDashboard.sourceLabel=cluster</code></li>
+            </ol>
+            <a class="more" href="https://github.com/mahdidarabi/karkive/blob/main/charts/karkive/dashboards/karkive.json">Dashboard JSON ↗</a>
+          </article>
         </div>
       </section>
 
-      <section class="install" id="install">
-        <div class="section-head">
+      <!-- Install -->
+      <section class="wrap section" id="install">
+        <header class="section-head">
           <p class="eyebrow">Install</p>
           <h2>Helm from GHCR.</h2>
-          <p>
-            Current chart: <strong id="ver">0.1.0</strong>.
-            Images publish to <code>ghcr.io/mahdidarabi/karkive</code>; charts to
-            <code>oci://ghcr.io/mahdidarabi/charts/karkive</code>.
-          </p>
-        </div>
-        <div class="code-wrap">
-          <div class="code-bar">
-            <span>helm</span>
-            <button type="button" class="copy" data-copy="#helm-install" aria-label="Copy Helm install">Copy</button>
-          </div>
-          <pre id="helm-install" tabindex="0"><code>helm install karkive oci://ghcr.io/mahdidarabi/charts/karkive \
+          <p>Current chart <strong id="ver">0.1.0</strong>. Images publish to <code>ghcr.io/mahdidarabi/karkive</code>, charts to <code>oci://ghcr.io/mahdidarabi/charts/karkive</code>.</p>
+        </header>
+
+        <div class="install-grid">
+          <div class="code-wrap" data-tabs>
+            <div class="code-bar">
+              <div class="tabs" role="tablist" aria-label="Install options">
+                <button type="button" role="tab" id="tab-ih" aria-controls="helm-install" aria-selected="true">Helm</button>
+                <button type="button" role="tab" id="tab-im" aria-controls="panel-im" aria-selected="false" tabindex="-1">+ monitoring</button>
+                <button type="button" role="tab" id="tab-ig" aria-controls="panel-ig" aria-selected="false" tabindex="-1">GitOps</button>
+              </div>
+              <button type="button" class="copy" data-copy-active aria-label="Copy the selected command">Copy</button>
+            </div>
+            <pre class="tab-panel" role="tabpanel" id="helm-install" aria-labelledby="tab-ih" tabindex="0"><code>helm install karkive oci://ghcr.io/mahdidarabi/charts/karkive \
   --version 0.1.0 \
   -n karkive-system --create-namespace</code></pre>
-        </div>
-        <p class="install-note">
-          Add <code>--set metrics.serviceMonitor.enabled=true</code> (and PrometheusRule / Grafana dashboard)
-          when you already run kube-prometheus. On GitOps, set
-          <code>webhook.certManager.enabled=true</code> so Helm does not regenerate the webhook CA every template.
-          Full knobs live in the
-          <a href="https://github.com/mahdidarabi/karkive#install">README</a>.
-        </p>
-        <div class="install-details">
-          <article class="install-card">
-            <span class="install-number">01</span>
-            <h3>Before you start</h3>
-            <ul>
-              <li>Helm 3 with OCI registry support</li>
-              <li>A kubeconfig with permission to install CRDs</li>
-              <li>Existing cert-manager only when webhook certificates use it</li>
-              <li>Prometheus Operator is optional for ServiceMonitor and alerts</li>
-            </ul>
-          </article>
-          <article class="install-card">
-            <span class="install-number">02</span>
-            <h3>Enable observability</h3>
-            <p>Turn on the integrations when kube-prometheus is already installed:</p>
-            <div class="code-wrap compact-code">
-              <pre><code>helm upgrade --install karkive \
+            <pre class="tab-panel" role="tabpanel" id="panel-im" aria-labelledby="tab-im" tabindex="0" hidden><code>helm upgrade --install karkive \
   oci://ghcr.io/mahdidarabi/charts/karkive \
   -n karkive-system --create-namespace \
   --set metrics.serviceMonitor.enabled=true \
   --set metrics.prometheusRule.enabled=true \
   --set metrics.grafanaDashboard.enabled=true</code></pre>
-            </div>
-          </article>
-          <article class="install-card">
-            <span class="install-number">03</span>
-            <h3>Verify and declare</h3>
-            <div class="code-wrap compact-code">
-              <pre><code>kubectl get deploy,svc -n karkive-system
-kubectl get crd backups.karkive.io \
-  restores.karkive.io
+            <pre class="tab-panel" role="tabpanel" id="panel-ig" aria-labelledby="tab-ig" tabindex="0" hidden><code><span class="c"># Argo CD / Flux: let cert-manager own the webhook</span>
+<span class="c"># certs so each render does not rotate the CA.</span>
+<span class="k">webhook</span>:
+  <span class="k">certManager</span>:
+    <span class="k">enabled</span>: true</code></pre>
+          </div>
 
-# Then apply a Secret and a Backup CR
-kubectl apply -f config/samples/backup-secret.yaml
-kubectl apply -f config/samples/karkive_v1alpha1_backup.yaml</code></pre>
-            </div>
-            <p>Update the sample endpoint and credentials before applying it to a real cluster.</p>
-          </article>
+          <ol class="install-steps">
+            <li>
+              <h3>Before you start</h3>
+              <p>Helm 3 with OCI support and permission to install CRDs. cert-manager only if the webhook uses it; Prometheus Operator is optional.</p>
+            </li>
+            <li>
+              <h3>Verify</h3>
+              <pre tabindex="0"><code>kubectl get deploy -n karkive-system
+kubectl get crd backups.karkive.io \
+  restores.karkive.io</code></pre>
+            </li>
+            <li>
+              <h3>Declare</h3>
+              <p>Apply a Secret and a Backup in your app namespace, then watch <code>kubectl get bak</code>. Samples live in <a href="https://github.com/mahdidarabi/karkive/tree/main/config/samples"><code>config/samples</code></a>.</p>
+            </li>
+          </ol>
         </div>
       </section>
     </main>
 
     <footer class="foot">
-      <div class="foot-brand">
-        <strong>KArkive</strong>
-        <span>Kubernetes-native backup &amp; restore.</span>
+      <div class="wrap foot-inner">
+        <div class="foot-brand">
+          <strong>KArkive</strong>
+          <span>Kubernetes-native backup &amp; restore.</span>
+        </div>
+        <ul>
+          <li><a href="https://github.com/mahdidarabi/karkive">GitHub</a></li>
+          <li><a href="https://github.com/mahdidarabi/karkive#readme">Docs</a></li>
+          <li><a href="https://github.com/mahdidarabi/karkive/tags">Releases</a></li>
+          <li><a href="https://github.com/mahdidarabi/karkive/pkgs/container/karkive">GHCR</a></li>
+        </ul>
+        <p class="legal">&copy; <span id="year"></span> KArkive</p>
       </div>
-      <ul>
-        <li><a href="https://github.com/mahdidarabi/karkive">GitHub</a></li>
-        <li><a href="https://github.com/mahdidarabi/karkive#install">Docs</a></li>
-        <li><a href="https://github.com/mahdidarabi/karkive/pkgs/container/karkive">GHCR</a></li>
-        <li><a href="https://karkive.ir">karkive.ir</a></li>
-      </ul>
-      <p class="legal">&copy; <span id="year"></span> KArkive</p>
     </footer>
 
     <script src="app.js" defer></script>
