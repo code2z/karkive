@@ -27,12 +27,31 @@ case "${DUMP_PREFIX}" in
   *)         S3_NAME='pg_dump-*.pgdump.gz.gpg' ;;
 esac
 log "mirror finished; pruning S3 objects older than ${S3_OLDER_THAN} name=${S3_NAME} (days=${S3_RETENTION_DAYS:-n/a} hours=${S3_RETENTION_HOURS:-n/a})"
+# Pruning is best effort: the new dump is already uploaded, so a failed delete must not fail the Job (and re-run the whole dump).
+# Some S3 providers drop the connection on DELETE after removing the object (mc: "unexpected EOF"), so retry, then check whether the object is gone. Anything left is picked up by the next run's prune.
+prune_object() {
+  obj="$1"
+  attempt=1
+  while [ "$attempt" -le 3 ]; do
+    if mc rm "$obj"; then
+      return 0
+    fi
+    if ! mc stat "$obj" >/dev/null 2>&1; then
+      log "remove of ${obj} returned an error but the object is gone; continuing"
+      return 0
+    fi
+    log "WARN: remove of ${obj} failed (attempt ${attempt}/3)"
+    attempt=$((attempt + 1))
+    sleep 5
+  done
+  log "WARN: could not remove expired ${obj}; leaving it for the next run"
+}
 mc find "backup/${S3_BUCKET}/${S3_PATH}/" \
   --name "${S3_NAME}" \
   --older-than "${S3_OLDER_THAN}" | while IFS= read -r obj; do
   if [ -n "$obj" ]; then
     log "removing expired ${obj}"
-    mc rm "$obj"
+    prune_object "$obj"
   fi
 done
 touch "${DATA_DIR}/.step-job-done"

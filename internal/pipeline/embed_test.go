@@ -222,3 +222,18 @@ func TestBackupStagesKnowPVCDumpPrefix(t *testing.T) {
 		}
 	}
 }
+
+func TestS3SyncPruneIsBestEffort(t *testing.T) {
+	s, err := BackupScript("s3-sync.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"prune_object() {", `prune_object "$obj"`, `mc stat "$obj"`, "leaving it for the next run"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("s3-sync.sh missing %q", want)
+		}
+	}
+	if strings.Contains(s, "    mc rm \"$obj\"\n  fi") {
+		t.Error("s3-sync.sh: a bare mc rm in the prune loop fails the Job under set -e")
+	}
+}
