@@ -111,14 +111,60 @@ type ImageSet struct {
 	GnuPG *ImageSpec `json:"gnupg,omitempty"`
 	// Postgres is used for pg_dump / pg_restore / psql.
 	Postgres *ImageSpec `json:"postgres,omitempty"`
-	// Mc is the minio client image used for s3-sync and fetch.
+	// Mc is deprecated and ignored since 0.2.0: Stage mode uses Rclone for s3-sync and fetch.
 	Mc *ImageSpec `json:"mc,omitempty"`
+	// Rclone is used for s3-sync and fetch in Stage mode. It needs /bin/sh and rclone.
+	Rclone *ImageSpec `json:"rclone,omitempty"`
 	// MariaDB is used for mysqldump / mysql restore.
 	MariaDB *ImageSpec `json:"mariadb,omitempty"`
 	// Redis is used for redis-cli dump and restore.
 	Redis *ImageSpec `json:"redis,omitempty"`
 	// Tar must provide GNU tar; used by the pvcdump stage (engine pvc).
 	Tar *ImageSpec `json:"tar,omitempty"`
+	// Runner is the single container of pipeline mode Stream; the default is the per-engine karkive-runner-<engine> image. It needs bash, the engine's client tools (pg_dump/pg_restore, mariadb-dump, redis-cli, or GNU tar), zstd, gpg, and rclone.
+	Runner *ImageSpec `json:"runner,omitempty"`
+}
+
+// PipelineMode selects how the pipeline runs inside the Job pod.
+// +kubebuilder:validation:Enum=Stage;Stream
+type PipelineMode string
+
+const (
+	// PipelineModeStage runs one container per stage (cleanup, dump, compress, encrypt, s3-sync; restore: cleanup, fetch, decrypt, extract, restore), handing files over the shared volume. Default.
+	PipelineModeStage PipelineMode = "Stage"
+	// PipelineModeStream runs one container. Backup streams dump | compress | encrypt | upload with no plain file on disk; Postgres uses pg_dump's custom (or directory) format with zstd, so restores load with pg_restore --jobs.
+	PipelineModeStream PipelineMode = "Stream"
+)
+
+// PipelineSpec tunes the pipeline. All fields are optional.
+type PipelineSpec struct {
+	// Mode is Stage (default) or Stream.
+	// Stream objects are named *.dump.gpg / *.dir.tar.gpg (postgres) and *.zst.gpg (other engines). A Stream Restore also reads Stage objects (*.gz.gpg); a Stage Restore reads only Stage objects.
+	// +kubebuilder:default=Stage
+	Mode PipelineMode `json:"mode,omitempty"`
+
+	// Jobs is the parallelism of the database tools in Stream mode: pg_dump --jobs (directory format, scratch holds the compressed dump), pg_restore --jobs and vacuumdb --jobs. Default 1 for Backup and 2 for Restore. Ignored in Stage mode.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=32
+	Jobs *int32 `json:"jobs,omitempty"`
+
+	// CompressionLevel is the zstd level in Stream mode (pg_dump --compress=zstd:N, otherwise zstd -N). Default 3. Ignored in Stage mode (gzip).
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=19
+	CompressionLevel *int32 `json:"compressionLevel,omitempty"`
+}
+
+// EffectiveMode is Stage when the spec or its mode is unset.
+func (p *PipelineSpec) EffectiveMode() PipelineMode {
+	if p == nil || p.Mode == "" {
+		return PipelineModeStage
+	}
+	return p.Mode
+}
+
+// IsStream is true for pipeline mode Stream.
+func (p *PipelineSpec) IsStream() bool {
+	return p.EffectiveMode() == PipelineModeStream
 }
 
 // SecretKeySelector points at a Secret and optional key names.

@@ -13,6 +13,8 @@ type BackupResources struct {
 	Compress *corev1.ResourceRequirements `json:"compress,omitempty"`
 	Encrypt  *corev1.ResourceRequirements `json:"encrypt,omitempty"`
 	S3Sync   *corev1.ResourceRequirements `json:"s3Sync,omitempty"`
+	// Stream is the single container of pipeline mode Stream.
+	Stream *corev1.ResourceRequirements `json:"stream,omitempty"`
 }
 
 // PVCSourceSpec is the PersistentVolumeClaim that engine pvc archives with tar.
@@ -96,8 +98,11 @@ type BackupSpec struct {
 	// DataDir is the volume mount path. Default /backup/data.
 	DataDir string `json:"dataDir,omitempty"`
 
-	// McConfigDir for the minio client. Default /tmp/mc-config.
+	// McConfigDir is deprecated and ignored since 0.2.0 (the S3 client is rclone, configured from env).
 	McConfigDir string `json:"mcConfigDir,omitempty"`
+
+	// Pipeline selects Stage (one container per stage, default) or Stream (one container, dump | compress | encrypt | upload) and tunes it.
+	Pipeline *PipelineSpec `json:"pipeline,omitempty"`
 
 	// Images overrides operator-wide default images.
 	Images *ImageSet `json:"images,omitempty"`

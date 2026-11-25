@@ -12,6 +12,8 @@ type RestoreResources struct {
 	Decrypt *corev1.ResourceRequirements `json:"decrypt,omitempty"`
 	Extract *corev1.ResourceRequirements `json:"extract,omitempty"`
 	Restore *corev1.ResourceRequirements `json:"restore,omitempty"`
+	// Stream is the single container of pipeline mode Stream.
+	Stream *corev1.ResourceRequirements `json:"stream,omitempty"`
 }
 
 // RestoreSpec defines the desired state of Restore.
@@ -56,8 +58,11 @@ type RestoreSpec struct {
 	// Workdir is the volume mount path. Default /workdir.
 	Workdir string `json:"workdir,omitempty"`
 
-	// McConfigDir for the minio client. Default /tmp/mc-config.
+	// McConfigDir is deprecated and ignored since 0.2.0 (the S3 client is rclone, configured from env).
 	McConfigDir string `json:"mcConfigDir,omitempty"`
+
+	// Pipeline selects Stage (default) or Stream and tunes it. A Stream Restore reads Stream and Stage objects and loads Postgres custom/directory dumps with pg_restore --jobs.
+	Pipeline *PipelineSpec `json:"pipeline,omitempty"`
 
 	// BackupFile is a specific S3 object name. Empty + UseLatestBackupAsFallback
 	// downloads the newest dump matching the engine prefix.

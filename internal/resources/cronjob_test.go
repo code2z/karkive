@@ -97,7 +97,7 @@ func TestMutateBackupCronJob_PostgresStages(t *testing.T) {
 	if images["encrypt"] != config.DefaultGnuPGImage {
 		t.Errorf("encrypt image=%s", images["encrypt"])
 	}
-	if images["s3-sync"] != config.DefaultMcImage {
+	if images["s3-sync"] != config.DefaultRcloneImage {
 		t.Errorf("s3-sync image=%s", images["s3-sync"])
 	}
 
@@ -481,5 +481,56 @@ func TestImageSet_SharedByBackupAndRestore(t *testing.T) {
 	}
 	if bcj.Spec.JobTemplate.Spec.Template.Spec.Containers[1].Image != "postgres:custom" {
 		t.Errorf("backup dump image=%s", bcj.Spec.JobTemplate.Spec.Template.Spec.Containers[1].Image)
+	}
+}
+
+func TestStreamBackupIsOneContainer(t *testing.T) {
+	backup := testBackup()
+	backup.Spec.Pipeline = &karkivev1alpha1.PipelineSpec{Mode: karkivev1alpha1.PipelineModeStream, Jobs: ptr.To(int32(4))}
+	var cj batchv1.CronJob
+	MutateBackupCronJob(&cj, backup, config.Config{})
+	cs := cj.Spec.JobTemplate.Spec.Template.Spec.Containers
+	if len(cs) != 1 || cs[0].Name != "stream" {
+		t.Fatalf("want one stream container, got %d", len(cs))
+	}
+	if cs[0].Image != config.DefaultRunnerPostgresImage {
+		t.Errorf("image=%s", cs[0].Image)
+	}
+	if cs[0].Command[0] != "/bin/bash" {
+		t.Errorf("command=%v", cs[0].Command)
+	}
+	env := map[string]bool{}
+	for _, e := range cs[0].Env {
+		env[e.Name] = true
+	}
+	for _, k := range []string{"PGUSER", "PGPASSWORD", "S3_ACCESS_KEY", "S3_SECRET_KEY"} {
+		if !env[k] {
+			t.Errorf("missing env %s", k)
+		}
+	}
+	var cm corev1.ConfigMap
+	if err := MutateBackupConfigMap(&cm, backup, config.Config{}); err != nil {
+		t.Fatal(err)
+	}
+	if cm.Data["JOBS"] != "4" || cm.Data["COMPRESSION_LEVEL"] != "3" || cm.Data["WORK_ROOT"] != config.DefaultStreamWorkDir {
+		t.Errorf("stream env: %v", cm.Data)
+	}
+}
+
+func TestStreamRestoreIsOneContainer(t *testing.T) {
+	restore := testRestore()
+	restore.Spec.Pipeline = &karkivev1alpha1.PipelineSpec{Mode: karkivev1alpha1.PipelineModeStream}
+	var cj batchv1.CronJob
+	MutateRestoreCronJob(&cj, restore, config.Config{})
+	cs := cj.Spec.JobTemplate.Spec.Template.Spec.Containers
+	if len(cs) != 1 || cs[0].Name != "stream" {
+		t.Fatalf("want one stream container, got %d", len(cs))
+	}
+	var cm corev1.ConfigMap
+	if err := MutateRestoreConfigMap(&cm, restore, config.Config{}); err != nil {
+		t.Fatal(err)
+	}
+	if cm.Data["JOBS"] != "2" {
+		t.Errorf("restore jobs default=%s", cm.Data["JOBS"])
 	}
 }

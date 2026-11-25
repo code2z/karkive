@@ -54,6 +54,12 @@ func MutateBackupConfigMap(cm *corev1.ConfigMap, backup *karkivev1alpha1.Backup,
 		cm.Data["PGDATABASE"] = backup.Spec.Database.Name
 	}
 
+	if IsStreamBackup(backup) {
+		for k, v := range streamBackupEnv(backup) {
+			cm.Data[k] = v
+		}
+	}
+
 	if backup.Spec.S3.EnabledOrDefault() {
 		if cm.Data["S3_ENDPOINT"] == "" {
 			return fmt.Errorf("s3.endpoint is empty (set spec.s3.endpoint or --default-s3-endpoint)")

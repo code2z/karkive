@@ -223,17 +223,55 @@ func TestBackupStagesKnowPVCDumpPrefix(t *testing.T) {
 	}
 }
 
-func TestS3SyncPruneIsBestEffort(t *testing.T) {
+func TestS3SyncUsesRcloneAndPrunesBestEffort(t *testing.T) {
 	s, err := BackupScript("s3-sync.sh")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"prune_object() {", `prune_object "$obj"`, `mc stat "$obj"`, "leaving it for the next run"} {
+	for _, want := range []string{"rclone_s3_init", "rclone copy", "rclone delete", "--min-age", "|| true"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("s3-sync.sh missing %q", want)
 		}
 	}
-	if strings.Contains(s, "    mc rm \"$obj\"\n  fi") {
-		t.Error("s3-sync.sh: a bare mc rm in the prune loop fails the Job under set -e")
+	if strings.Contains(s, "mc ") {
+		t.Error("s3-sync.sh still calls mc")
+	}
+	f, err := RestoreScript("fetch.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(f, "mc ") || !strings.Contains(f, "rclone copyto") {
+		t.Error("fetch.sh must fetch with rclone, not mc")
+	}
+}
+
+func TestStreamScripts(t *testing.T) {
+	for name, wants := range map[string][]string{
+		"backup.sh": {
+			"set -Eeuo pipefail",
+			"stream_init",
+			"--format=custom --compress=\"zstd:${LVL}\"",
+			"--format=directory --jobs=",
+			"run_dump | gpg_encrypt | rclone rcat",
+			"s3_prune",
+			"--cipher-algo AES256 --compress-algo none",
+		},
+		"restore.sh": {
+			"rclone cat",
+			"pg_restore",
+			"--jobs=",
+			"timescaledb_pre_restore",
+			"decompress_stream",
+		},
+	} {
+		s, err := StreamScript(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range wants {
+			if !strings.Contains(s, want) {
+				t.Errorf("stream %s missing %q", name, want)
+			}
+		}
 	}
 }

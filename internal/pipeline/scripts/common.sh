@@ -180,3 +180,22 @@ hold_until_job_done() {
   done
   log "job complete marker seen; exiting 0"
 }
+
+# rclone remote "s3:" from env only (no config file). Stage-mode s3-sync and fetch.
+rclone_s3_init() {
+  export RCLONE_CONFIG_S3_TYPE=s3
+  export RCLONE_CONFIG_S3_PROVIDER="${S3_PROVIDER:-Other}"
+  export RCLONE_CONFIG_S3_ENDPOINT="${S3_ENDPOINT}"
+  export RCLONE_CONFIG_S3_ACCESS_KEY_ID="${S3_ACCESS_KEY}"
+  export RCLONE_CONFIG_S3_SECRET_ACCESS_KEY="${S3_SECRET_KEY}"
+  export RCLONE_CONFIG_S3_REGION="${S3_REGION:-us-east-1}"
+  export RCLONE_CONFIG_S3_FORCE_PATH_STYLE="${S3_FORCE_PATH_STYLE:-true}"
+  export RCLONE_CONFIG_S3_NO_CHECK_BUCKET=true
+  export RCLONE_CONFIG=/tmp/rclone.conf
+  export RCLONE_CACHE_DIR=/tmp/rclone-cache
+  : > "${RCLONE_CONFIG}"
+  export RCLONE_RETRIES="${S3_RETRIES:-5}"
+  export RCLONE_LOW_LEVEL_RETRIES="${S3_LOW_LEVEL_RETRIES:-10}"
+  export RCLONE_USE_SERVER_MODTIME=true
+  S3_PREFIX="s3:${S3_BUCKET}/${S3_PATH%/}"
+}

@@ -188,10 +188,69 @@ func postgresImage(images *karkivev1alpha1.ImageSet, cfg config.Config) (string,
 	}, cfg.PostgresImage, config.DefaultPostgresImage)
 }
 
-func mcImage(images *karkivev1alpha1.ImageSet, cfg config.Config) (string, corev1.PullPolicy) {
+func rcloneImage(images *karkivev1alpha1.ImageSet, cfg config.Config) (string, corev1.PullPolicy) {
 	return pipelineImage(images, func(i *karkivev1alpha1.ImageSet) *karkivev1alpha1.ImageSpec {
-		return i.Mc
-	}, cfg.McImage, config.DefaultMcImage)
+		return i.Rclone
+	}, cfg.RcloneImage, config.DefaultRcloneImage)
+}
+
+// runnerImage is the Stream runner for the engine; spec.images.runner overrides it.
+func runnerImage(images *karkivev1alpha1.ImageSet, cfg config.Config, engine karkivev1alpha1.Engine) (string, corev1.PullPolicy) {
+	configured, fallback := cfg.RunnerPostgresImage, config.DefaultRunnerPostgresImage
+	switch EffectiveEngine(engine) {
+	case karkivev1alpha1.EngineMariaDB:
+		configured, fallback = cfg.RunnerMariaDBImage, config.DefaultRunnerMariaDBImage
+	case karkivev1alpha1.EngineRedis:
+		configured, fallback = cfg.RunnerRedisImage, config.DefaultRunnerRedisImage
+	case karkivev1alpha1.EnginePVC:
+		configured, fallback = cfg.RunnerPVCImage, config.DefaultRunnerPVCImage
+	}
+	return pipelineImage(images, func(i *karkivev1alpha1.ImageSet) *karkivev1alpha1.ImageSpec {
+		return i.Runner
+	}, configured, fallback)
+}
+
+func DefaultStreamResources() corev1.ResourceRequirements {
+	return corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{
+			corev1.ResourceCPU:              resource.MustParse("250m"),
+			corev1.ResourceMemory:           resource.MustParse("256Mi"),
+			corev1.ResourceEphemeralStorage: resource.MustParse("50Mi"),
+		},
+		Limits: corev1.ResourceList{
+			corev1.ResourceCPU:              resource.MustParse("2"),
+			corev1.ResourceMemory:           resource.MustParse("1Gi"),
+			corev1.ResourceEphemeralStorage: resource.MustParse("1Gi"),
+		},
+	}
+}
+
+func backupStreamResources(backup *karkivev1alpha1.Backup) corev1.ResourceRequirements {
+	if backup.Spec.Resources == nil {
+		return DefaultStreamResources()
+	}
+	return mergeResources(DefaultStreamResources(), backup.Spec.Resources.Stream)
+}
+
+func restoreStreamResources(restore *karkivev1alpha1.Restore) corev1.ResourceRequirements {
+	if restore.Spec.Resources == nil {
+		return DefaultStreamResources()
+	}
+	return mergeResources(DefaultStreamResources(), restore.Spec.Resources.Stream)
+}
+
+func pipelineJobs(p *karkivev1alpha1.PipelineSpec, def int32) int32 {
+	if p == nil || p.Jobs == nil {
+		return def
+	}
+	return *p.Jobs
+}
+
+func compressionLevel(p *karkivev1alpha1.PipelineSpec) int32 {
+	if p == nil || p.CompressionLevel == nil {
+		return config.DefaultCompressionLevel
+	}
+	return *p.CompressionLevel
 }
 
 func busyBoxImage(images *karkivev1alpha1.ImageSet, cfg config.Config) (string, corev1.PullPolicy) {

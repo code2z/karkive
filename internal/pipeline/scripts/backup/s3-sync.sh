@@ -9,10 +9,10 @@ pipeline_init
 wait_for "${DATA_DIR}/.step-encrypt-done" "encrypt"
 already_done_exit "${DATA_DIR}/.step-job-done" "s3-sync"
 log "stage start: s3-sync bucket=${S3_BUCKET} path=${S3_PATH}"
-log "configuring mc alias endpoint=${S3_ENDPOINT}"
-mc alias set backup "${S3_ENDPOINT}" "${S3_ACCESS_KEY}" "${S3_SECRET_KEY}"
-log "mirroring ${DATA_DIR}/ -> backup/${S3_BUCKET}/${S3_PATH}/"
-mc mirror --exclude '.step-*' "${DATA_DIR}/" "backup/${S3_BUCKET}/${S3_PATH}/"
+log "configuring rclone endpoint=${S3_ENDPOINT}"
+rclone_s3_init
+log "uploading ${DATA_DIR}/ -> ${S3_PREFIX}/"
+rclone copy --exclude '.step-*' --exclude '.*' "${DATA_DIR}/" "${S3_PREFIX}/"
 # Prefer S3_RETENTION_DAYS; fall back to S3_RETENTION_HOURS (legacy).
 if [ -n "${S3_RETENTION_DAYS:-}" ]; then
   S3_OLDER_THAN="$((S3_RETENTION_DAYS * 24))h"
@@ -26,33 +26,9 @@ case "${DUMP_PREFIX}" in
   pvcdump)   S3_NAME='pvcdump-*.tar.gz.gpg' ;;
   *)         S3_NAME='pg_dump-*.pgdump.gz.gpg' ;;
 esac
-log "mirror finished; pruning S3 objects older than ${S3_OLDER_THAN} name=${S3_NAME} (days=${S3_RETENTION_DAYS:-n/a} hours=${S3_RETENTION_HOURS:-n/a})"
-# Pruning is best effort: the new dump is already uploaded, so a failed delete must not fail the Job (and re-run the whole dump).
-# Some S3 providers drop the connection on DELETE after removing the object (mc: "unexpected EOF"), so retry, then check whether the object is gone. Anything left is picked up by the next run's prune.
-prune_object() {
-  obj="$1"
-  attempt=1
-  while [ "$attempt" -le 3 ]; do
-    if mc rm "$obj"; then
-      return 0
-    fi
-    if ! mc stat "$obj" >/dev/null 2>&1; then
-      log "remove of ${obj} returned an error but the object is gone; continuing"
-      return 0
-    fi
-    log "WARN: remove of ${obj} failed (attempt ${attempt}/3)"
-    attempt=$((attempt + 1))
-    sleep 5
-  done
-  log "WARN: could not remove expired ${obj}; leaving it for the next run"
-}
-mc find "backup/${S3_BUCKET}/${S3_PATH}/" \
-  --name "${S3_NAME}" \
-  --older-than "${S3_OLDER_THAN}" | while IFS= read -r obj; do
-  if [ -n "$obj" ]; then
-    log "removing expired ${obj}"
-    prune_object "$obj"
-  fi
-done
+log "upload finished; pruning S3 objects older than ${S3_OLDER_THAN} name=${S3_NAME} (days=${S3_RETENTION_DAYS:-n/a} hours=${S3_RETENTION_HOURS:-n/a})"
+# Pruning is best effort: the new dump is already uploaded, so a failed delete must not fail the Job (and re-run the whole dump). rclone retries each delete; anything left is picked up by the next run.
+rclone delete --include "${S3_NAME}" --min-age "${S3_OLDER_THAN}" -v "${S3_PREFIX}/" 2>&1 \
+  | while IFS= read -r line; do log "rclone: ${line}"; done || true
 touch "${DATA_DIR}/.step-job-done"
 log "wrote marker .step-job-done; releasing sibling containers; stage done"

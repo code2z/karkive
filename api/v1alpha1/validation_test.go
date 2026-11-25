@@ -171,3 +171,25 @@ func TestValidateRestoreSpec(t *testing.T) {
 }
 
 func boolPtr(v bool) *bool { return &v }
+
+func TestValidatePipeline(t *testing.T) {
+	stream := &PipelineSpec{Mode: PipelineModeStream}
+	b := BackupSpec{Schedule: "0 2 * * *", Database: DatabaseSpec{Host: "h", Name: "d"}, S3: S3Spec{Path: "p"}, SecretRef: corev1.LocalObjectReference{Name: "s"}, Pipeline: stream}
+	if err := ValidateBackupSpec(b); err != nil {
+		t.Fatalf("stream backup: %v", err)
+	}
+	b.Pipeline = &PipelineSpec{Mode: PipelineModeStream, Jobs: ptrInt32(0)}
+	if err := ValidateBackupSpec(b); err == nil {
+		t.Fatal("jobs 0 must be rejected")
+	}
+	b.Pipeline = &PipelineSpec{CompressionLevel: ptrInt32(22)}
+	if err := ValidateBackupSpec(b); err == nil {
+		t.Fatal("compressionLevel 22 must be rejected")
+	}
+	r := RestoreSpec{Engine: EngineRedis, Schedule: "0 2 * * *", Database: DatabaseSpec{Host: "h", Name: "d"}, S3: S3Spec{Path: "p"}, SecretRef: corev1.LocalObjectReference{Name: "s"}, RedisSecret: &SecretKeySelector{Name: "r"}, Pipeline: stream}
+	if err := ValidateRestoreSpec(r); err != nil {
+		t.Fatalf("stream redis restore: %v", err)
+	}
+}
+
+func ptrInt32(v int32) *int32 { return &v }

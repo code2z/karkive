@@ -1,0 +1,115 @@
+# Stream runner images, one per engine (runner/<engine>/). Built only when that folder or the shared rclone installer changes.
+# Tag = runner/<engine>/TAG, named after the tools inside: <client><version>-rclone<version>-r<revision> (e.g. pg18.7-rclone1.76.0-r1). A published tag is never overwritten: bump the versions or the -r revision with every Dockerfile change.
+name: Runners
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "runner/**"
+      - ".github/workflows/runners.yaml"
+  pull_request:
+    paths:
+      - "runner/**"
+      - ".github/workflows/runners.yaml"
+  workflow_dispatch:
+    inputs:
+      engines:
+        description: "Space-separated engines to build (empty: all)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      engines: ${{ steps.pick.outputs.engines }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT: ${{ github.event.inputs.engines }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          all=$(ls -d runner/*/ | xargs -n1 basename)
+          if [ "$EVENT" = workflow_dispatch ]; then
+            picked="${INPUT:-$all}"
+          elif [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = 0000000000000000000000000000000000000000 ] || ! git cat-file -e "$BASE_SHA" 2>/dev/null; then
+            picked="$all"
+          else
+            changed=$(git diff --name-only "$BASE_SHA" HEAD -- runner .github/workflows/runners.yaml)
+            if echo "$changed" | grep -qE '^(runner/install-rclone\.sh|\.github/workflows/runners\.yaml)$'; then
+              picked="$all"
+            else
+              picked=$(echo "$changed" | sed -n 's#^runner/\([^/]*\)/.*#\1#p' | sort -u)
+            fi
+          fi
+          json=$(printf '%s\n' $picked | jq -R . | jq -cs 'map(select(length > 0))')
+          echo "engines=$json" >> "$GITHUB_OUTPUT"
+          echo "engines: $json"
+
+  build:
+    needs: changes
+    if: needs.changes.outputs.engines != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: ${{ fromJSON(needs.changes.outputs.engines) }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - id: tag
+        run: echo "tag=$(tr -d '[:space:]' < runner/${{ matrix.engine }}/TAG)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v4
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: exists
+        if: github.event_name != 'pull_request'
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/karkive-runner-${{ matrix.engine }}:${{ steps.tag.outputs.tag }}
+        run: |
+          if docker buildx imagetools inspect "$IMAGE" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::$IMAGE already exists; built but not pushed. Bump runner/${{ matrix.engine }}/TAG to publish."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: runner
+          file: runner/${{ matrix.engine }}/Dockerfile
+          push: ${{ github.event_name != 'pull_request' && steps.exists.outputs.exists != 'true' }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/karkive-runner-${{ matrix.engine }}:${{ steps.tag.outputs.tag }}
+            ghcr.io/${{ github.repository_owner }}/karkive-runner-${{ matrix.engine }}:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.description=KArkive Stream runner (${{ matrix.engine }})
+          cache-from: type=gha,scope=runner-${{ matrix.engine }}
+          cache-to: type=gha,mode=max,scope=runner-${{ matrix.engine }}
+          platforms: linux/amd64,linux/arm64

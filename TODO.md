@@ -23,8 +23,6 @@
 - [x] Status: `Ready` / `Pending` / `Error` / `Unsupported`
 - [x] Backup samples and examples
 
-
-
 ## Postgres restore
 
 - [x] Pipeline scripts: `cleanup` → `fetch` → `decrypt` → `extract` → `pgrestore`
@@ -33,8 +31,6 @@
 - [x] Job defaults: `restartPolicy: Never`, `backoffLimit: 1`
 - [x] `useLatestBackupAsFallback` / `dropDatabaseIfExists` / `stripPgAuditExtension`
 - [x] Restore samples and examples
-
-
 
 ## Monitoring
 
@@ -47,23 +43,17 @@
 - [x] Alerts for missed schedules and failed Jobs
 - [x] Grafana dashboard
 
-
-
 ## MariaDB
 
 - [x] Pipeline scripts: `cleanup` → `mysqldump` → `compress` → `encrypt` → `s3-sync`
 - [x] Restore: `cleanup` → `fetch` → `decrypt` → `extract` → `mysqlrestore`
 - [x] `spec.mariadbSecret` for target DB credentials
 
-
-
 ## Redis
 
 - [x] Backup: `redis-cli --rdb`
 - [x] Restore: load RDB into an ephemeral `redis-server` and `REPLICAOF` into the target. Non-empty targets require `dropDatabaseIfExists`.
 - [x] `spec.redisSecret` for target credentials
-
-
 
 ## Later (done)
 
@@ -73,8 +63,6 @@
 - [x] Publish the Helm chart
 - [x] Richer status from the last Job (success/failure, failure reason)
 
-
-
 ## Pipeline
 
 - [x] DRY bash: extract shared `log` / `wait_for` / `hold_until_job_done` / `mark_failed` into one sourced helper (embed `common.sh` for backup and restore)
@@ -82,10 +70,25 @@
 - [x] Redis restore: ephemeral `redis-server` + `REPLICAOF` (not SCAN+MIGRATE)
 - [x] Make S3 sync optional (`spec.s3.enabled`, default true). When false: skip the `s3-sync` container, do not require S3 secret keys or endpoint/bucket. Encrypt still writes `retained/` on the PVC.
 - [ ] Restore from local retained dumps (`spec.source: s3 | pvc`) when Backup skipped S3
-- [ ] Pick latest restore object by `mc find --json` `lastModified`, not `sort | tail`. Optionally add seconds + a unique suffix to dump filenames
+- [x] Pick the latest restore object by S3 LastModified (rclone `lsf --format tp`), not by name. Stream object names carry seconds
 - [ ] Redis `REPLICAOF` restore needs the target to connect inbound to the Job pod `:6380` (NetworkPolicy / firewall). Document that; if replicaof is blocked, add a SCAN+MIGRATE fallback that pushes from the Job
 
+## Speed and size (Stream mode)
 
+- [x] `spec.pipeline.mode: Stream`: one container per Job, `dump | compress | gpg | rclone rcat` with no plain dump on disk; restore `rclone cat | gpg -d` into the loader
+- [x] Postgres custom/directory format with zstd, `pg_restore --jobs`, `vacuumdb --analyze-only`; TimescaleDB loads at the source extension version from a `.meta` sidecar
+- [x] rclone instead of mc for Stage and Stream (multipart streaming upload, retries, age-based delete)
+- [x] Per-engine runner images, built in CI only when `runner/<engine>/` changes
+- [ ] Stream restore for Redis without `REPLICAOF`: load the RDB into an in-pod `redis-server` and `MIGRATE`/`RESTORE` keys out, so the target needs no inbound connection to the Job
+- [ ] Postgres restore without scratch: `pg_restore --jobs` needs a seekable file, so the decrypted dump lands on the volume once. Stream straight into `pg_restore` when `jobs: 1`, and size the volume from the last object size otherwise
+- [ ] MariaDB parallel dump/restore with `mydumper` / `myloader` (per-table files, zstd) behind `jobs > 1`
+- [ ] Encrypt with `age` (X25519 public key) instead of symmetric gpg: Backups hold only the public key, Restores hold the private key; also faster than gpg on large streams
+- [ ] Record the last object in `status.lastObject` (key, size, duration, compression ratio) and expose `karkive_backup_last_size_bytes`; alert on a sudden size drop
+- [ ] Verify each upload: `rclone check --download` of the object against a sha256 computed in the pipe (`tee >(sha256sum)`), stored in the `.meta` sidecar
+- [ ] Bandwidth and IO limits for big dumps (`rclone --bwlimit`, `ionice`, `pg_dump --jobs` capped by DB CPU) so a backup does not starve the primary; prefer a read replica host (`spec.database.readHost`)
+- [ ] Continuous archiving for Postgres (WAL via the CNPG Barman/plugin path) for point-in-time recovery; keep logical dumps for portability
+- [ ] Incremental PVC archives (`tar --listed-incremental` or restic/kopia) instead of a full tar every run
+- [ ] Make `Stream` the default once it has run in production for a while; then drop the Stage-mode BusyBox/gpg/rclone images
 
 ## API and controller
 
@@ -98,14 +101,10 @@
 - [ ] Default `dropDatabaseIfExists` to false (no implicit dataset replace / DROP DATABASE). Destructive restore must be explicit
 - [ ] Watch Secrets (`secretRef` + restore target secret) instead of 30s requeue on NotFound
 
-
-
 ## Security and engines
 
 - [ ] FSGroup per engine, or one shared GID with matching `runAsGroup` (today always Postgres UID 26)
 - [ ] Postgres restore: do not interpolate `${PGDATABASE}` / `${role}` into SQL. Strict `[A-Za-z0-9_]+` or `psql` variables / `quote_ident`
-
-
 
 ## Features
 

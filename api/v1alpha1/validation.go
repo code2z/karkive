@@ -46,7 +46,7 @@ func ValidateBackupSpec(spec BackupSpec) error {
 	if err := validateRuntime(spec.Runtime, spec.Persistence); err != nil {
 		return err
 	}
-	return nil
+	return validatePipeline(spec.Pipeline)
 }
 
 // ValidateRestoreSpec checks Restore fields the operator can evaluate without the cluster.
@@ -91,6 +91,24 @@ func ValidateRestoreSpec(spec RestoreSpec) error {
 	}
 	if err := validateRuntime(spec.Runtime, spec.Persistence); err != nil {
 		return err
+	}
+	return validatePipeline(spec.Pipeline)
+}
+
+func validatePipeline(p *PipelineSpec) error {
+	if p == nil {
+		return nil
+	}
+	switch p.EffectiveMode() {
+	case PipelineModeStage, PipelineModeStream:
+	default:
+		return fmt.Errorf("spec.pipeline.mode must be Stage or Stream")
+	}
+	if p.Jobs != nil && (*p.Jobs < 1 || *p.Jobs > 32) {
+		return fmt.Errorf("spec.pipeline.jobs must be between 1 and 32")
+	}
+	if p.CompressionLevel != nil && (*p.CompressionLevel < 1 || *p.CompressionLevel > 19) {
+		return fmt.Errorf("spec.pipeline.compressionLevel must be between 1 and 19")
 	}
 	return nil
 }

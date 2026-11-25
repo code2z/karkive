@@ -39,7 +39,11 @@ spec:
             - --busybox-image={{ .Values.defaults.busyboxImage }}
             - --gnupg-image={{ .Values.defaults.gnupgImage }}
             - --postgres-image={{ .Values.defaults.postgresImage }}
-            - --mc-image={{ .Values.defaults.mcImage }}
+            - --rclone-image={{ .Values.defaults.rcloneImage }}
+            - --runner-postgres-image={{ .Values.defaults.runnerImages.postgres }}
+            - --runner-mariadb-image={{ .Values.defaults.runnerImages.mariadb }}
+            - --runner-redis-image={{ .Values.defaults.runnerImages.redis }}
+            - --runner-pvc-image={{ .Values.defaults.runnerImages.pvc }}
             - --mariadb-image={{ .Values.defaults.mariadbImage }}
             - --redis-image={{ .Values.defaults.redisImage }}
             - --tar-image={{ .Values.defaults.tarImage }}

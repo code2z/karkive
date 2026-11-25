@@ -23,17 +23,14 @@ const (
 )
 
 // MutateBackupCronJob writes the backup pipeline CronJob.
-// Stage order: cleanup → dump → compress → encrypt → s3-sync (s3-sync omitted when s3.enabled=false).
-// For engine pvc the dump stage is pvcdump (tar of the read-only source claim).
+// Stage mode: cleanup → dump → compress → encrypt → s3-sync (s3-sync omitted when s3.enabled=false); for engine pvc the dump stage is pvcdump.
+// Stream mode: one container that streams dump | compress | encrypt | upload, then prunes S3.
 func MutateBackupCronJob(cj *batchv1.CronJob, backup *karkivev1alpha1.Backup, cfg config.Config) {
 	job := backup.Spec.Job
 	if job == nil {
 		job = &karkivev1alpha1.JobPolicy{}
 	}
 
-	busyImg, busyPull := busyBoxImage(backup.Spec.Images, cfg)
-	gpgImg, gpgPull := gnuPGImage(backup.Spec.Images, cfg)
-	cleanupRes, dumpRes, compressRes, encryptRes, s3Res := backupStageResources(backup)
 	secret := secretName(backup)
 	owned := BackupOwnedName(backup)
 	cmName := owned
@@ -48,25 +45,11 @@ func MutateBackupCronJob(cj *batchv1.CronJob, backup *karkivev1alpha1.Backup, cf
 		restart = job.RestartPolicy
 	}
 
-	containers := []corev1.Container{
-		newScriptContainer(scriptOpts{
-			Name: "cleanup", Image: busyImg, Pull: busyPull,
-			Script:    pipeline.MustBackupScript("cleanup.sh"),
-			ConfigMap: cmName, Resources: cleanupRes,
-			Security: ToolsSecurityContext(), TmpSubPath: "cleanup-tmp",
-		}),
-		dumpContainer(backup, cfg, dumpRes, cmName, secret),
-		newScriptContainer(scriptOpts{
-			Name: "compress", Image: busyImg, Pull: busyPull,
-			Script:    pipeline.MustBackupScript("compress.sh"),
-			ConfigMap: cmName, Resources: compressRes,
-			Security: ToolsSecurityContext(), TmpSubPath: "compress-tmp-dir",
-		}),
-		encryptContainer(gpgImg, gpgPull, encryptRes, cmName),
-	}
-	if backup.Spec.S3.EnabledOrDefault() {
-		mcImg, mcPull := mcImage(backup.Spec.Images, cfg)
-		containers = append(containers, s3SyncContainer(mcImg, mcPull, s3Res, cmName, secret))
+	var containers []corev1.Container
+	if IsStreamBackup(backup) {
+		containers = []corev1.Container{streamBackupContainer(backup, cfg, cmName, secret)}
+	} else {
+		containers = stageBackupContainers(backup, cfg, cmName, secret)
 	}
 
 	var affinity []corev1.PodAffinityTerm
@@ -105,6 +88,34 @@ func MutateBackupCronJob(cj *batchv1.CronJob, backup *karkivev1alpha1.Backup, cf
 	if job.TimeZone != "" {
 		cj.Spec.TimeZone = ptr.To(job.TimeZone)
 	}
+}
+
+// stageBackupContainers is one container per stage: cleanup → dump → compress → encrypt → s3-sync.
+func stageBackupContainers(backup *karkivev1alpha1.Backup, cfg config.Config, cmName, secret string) []corev1.Container {
+	busyImg, busyPull := busyBoxImage(backup.Spec.Images, cfg)
+	gpgImg, gpgPull := gnuPGImage(backup.Spec.Images, cfg)
+	cleanupRes, dumpRes, compressRes, encryptRes, s3Res := backupStageResources(backup)
+	containers := []corev1.Container{
+		newScriptContainer(scriptOpts{
+			Name: "cleanup", Image: busyImg, Pull: busyPull,
+			Script:    pipeline.MustBackupScript("cleanup.sh"),
+			ConfigMap: cmName, Resources: cleanupRes,
+			Security: ToolsSecurityContext(), TmpSubPath: "cleanup-tmp",
+		}),
+		dumpContainer(backup, cfg, dumpRes, cmName, secret),
+		newScriptContainer(scriptOpts{
+			Name: "compress", Image: busyImg, Pull: busyPull,
+			Script:    pipeline.MustBackupScript("compress.sh"),
+			ConfigMap: cmName, Resources: compressRes,
+			Security: ToolsSecurityContext(), TmpSubPath: "compress-tmp-dir",
+		}),
+		encryptContainer(gpgImg, gpgPull, encryptRes, cmName),
+	}
+	if backup.Spec.S3.EnabledOrDefault() {
+		s3Img, s3Pull := rcloneImage(backup.Spec.Images, cfg)
+		containers = append(containers, s3SyncContainer(s3Img, s3Pull, s3Res, cmName, secret))
+	}
+	return containers
 }
 
 func dumpContainer(
@@ -179,7 +190,7 @@ func s3SyncContainer(image string, pull corev1.PullPolicy, res corev1.ResourceRe
 		Name: "s3-sync", Image: image, Pull: pull,
 		Script:    pipeline.MustBackupScript("s3-sync.sh"),
 		ConfigMap: cmName, Resources: res,
-		Security: McSecurityContext(), TmpSubPath: "mc-tmp-dir",
+		Security: S3ClientSecurityContext(), TmpSubPath: "s3-tmp-dir",
 	})
 	c.Env = append(c.Env,
 		secretEnv("S3_ACCESS_KEY", secret, "s3_access_key"),

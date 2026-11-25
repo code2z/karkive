@@ -16,8 +16,8 @@ const MariaDBUID int64 = 999
 // RedisUID is the official redis image user.
 const RedisUID int64 = 999
 
-// McUID is the minio/mc image user.
-const McUID int64 = 1000
+// S3ClientUID runs the rclone stages (s3-sync, fetch).
+const S3ClientUID int64 = 1000
 
 // ToolsUID is used for busybox / gnupg stages (numeric; images have no dedicated user).
 const ToolsUID int64 = 65532
@@ -41,8 +41,8 @@ func RedisSecurityContext() *corev1.SecurityContext {
 	return unixUserSecurityContext(RedisUID)
 }
 
-func McSecurityContext() *corev1.SecurityContext {
-	return unixUserSecurityContext(McUID)
+func S3ClientSecurityContext() *corev1.SecurityContext {
+	return unixUserSecurityContext(S3ClientUID)
 }
 
 func ToolsSecurityContext() *corev1.SecurityContext {

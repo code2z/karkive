@@ -47,6 +47,12 @@ func MutateRestoreConfigMap(cm *corev1.ConfigMap, restore *karkivev1alpha1.Resto
 		cm.Data["STRIP_PGAUDIT_EXTENSION"] = boolEnv(restore.Spec.StripPgAuditExtension, true)
 	}
 
+	if IsStreamRestore(restore) {
+		for k, v := range streamRestoreEnv(restore) {
+			cm.Data[k] = v
+		}
+	}
+
 	if cm.Data["S3_ENDPOINT"] == "" {
 		return fmt.Errorf("s3.endpoint is empty (set spec.s3.endpoint or --default-s3-endpoint)")
 	}

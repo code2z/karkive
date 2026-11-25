@@ -12,7 +12,7 @@ import (
 )
 
 // MutateRestoreCronJob writes the restore pipeline CronJob.
-// Stage order: cleanup → fetch → decrypt → extract → restore.
+// Stage mode: cleanup → fetch → decrypt → extract → restore. Stream mode: one container (fetch | decrypt | load).
 func MutateRestoreCronJob(cj *batchv1.CronJob, restore *karkivev1alpha1.Restore, cfg config.Config) {
 	job := restore.Spec.Job
 	if job == nil {
@@ -21,7 +21,7 @@ func MutateRestoreCronJob(cj *batchv1.CronJob, restore *karkivev1alpha1.Restore,
 
 	busyImg, busyPull := busyBoxImage(restore.Spec.Images, cfg)
 	gpgImg, gpgPull := gnuPGImage(restore.Spec.Images, cfg)
-	mcImg, mcPull := mcImage(restore.Spec.Images, cfg)
+	s3Img, s3Pull := rcloneImage(restore.Spec.Images, cfg)
 	cleanupRes, fetchRes, decryptRes, extractRes, restoreRes := restoreStageResources(restore)
 	secret := restoreSecretName(restore)
 	owned := RestoreOwnedName(restore)
@@ -38,10 +38,11 @@ func MutateRestoreCronJob(cj *batchv1.CronJob, restore *karkivev1alpha1.Restore,
 		restart = job.RestartPolicy
 	}
 
-	podSpec := corev1.PodSpec{
-		RestartPolicy:   restart,
-		SecurityContext: PodSecurityContext(),
-		Containers: []corev1.Container{
+	var containers []corev1.Container
+	if IsStreamRestore(restore) {
+		containers = []corev1.Container{streamRestoreContainer(restore, cfg, cmName, secret, workdir)}
+	} else {
+		containers = []corev1.Container{
 			newScriptContainer(scriptOpts{
 				Name: "cleanup", Image: busyImg, Pull: busyPull,
 				Script:    pipeline.MustRestoreScript("cleanup.sh"),
@@ -49,7 +50,7 @@ func MutateRestoreCronJob(cj *batchv1.CronJob, restore *karkivev1alpha1.Restore,
 				Security: ToolsSecurityContext(), TmpSubPath: "cleanup-tmp",
 				Volume: volumeWorkdir, MountPath: workdir,
 			}),
-			restoreFetchContainer(mcImg, mcPull, fetchRes, cmName, secret, workdir),
+			restoreFetchContainer(s3Img, s3Pull, fetchRes, cmName, secret, workdir),
 			restoreDecryptContainer(gpgImg, gpgPull, decryptRes, cmName, workdir),
 			newScriptContainer(scriptOpts{
 				Name: "extract", Image: busyImg, Pull: busyPull,
@@ -59,8 +60,13 @@ func MutateRestoreCronJob(cj *batchv1.CronJob, restore *karkivev1alpha1.Restore,
 				Volume: volumeWorkdir, MountPath: workdir,
 			}),
 			restoreEngineContainer(restore, cfg, restoreRes, cmName, workdir),
-		},
-		Volumes: restoreVolumes(restore, secret),
+		}
+	}
+	podSpec := corev1.PodSpec{
+		RestartPolicy:   restart,
+		SecurityContext: PodSecurityContext(),
+		Containers:      containers,
+		Volumes:         restoreVolumes(restore, secret),
 	}
 	if NeedsVolumeHolder(restore.Spec.Runtime) {
 		podSpec.Affinity = RequiredPodAffinity(VolumeHolderAffinityTerm(VolumeHolderMatchLabels(KindRestore, restore.Name)))
@@ -96,7 +102,7 @@ func restoreFetchContainer(image string, pull corev1.PullPolicy, res corev1.Reso
 		Name: "fetch", Image: image, Pull: pull,
 		Script:    pipeline.MustRestoreScript("fetch.sh"),
 		ConfigMap: cmName, Resources: res,
-		Security: McSecurityContext(), TmpSubPath: "mc-tmp",
+		Security: S3ClientSecurityContext(), TmpSubPath: "s3-tmp",
 		Volume: volumeWorkdir, MountPath: workdir,
 	})
 	c.Env = append(c.Env,

@@ -15,6 +15,9 @@ var backupScripts embed.FS
 //go:embed scripts/restore/*.sh
 var restoreScripts embed.FS
 
+//go:embed scripts/stream/*.sh
+var streamScripts embed.FS
+
 // CommonScript returns the shared helper sourced by every backup and restore stage.
 func CommonScript() string {
 	return commonScript
@@ -58,6 +61,32 @@ func RestoreScript(name string) (string, error) {
 // MustRestoreScript is RestoreScript and panics on a missing file.
 func MustRestoreScript(name string) string {
 	s, err := RestoreScript(name)
+	if err != nil {
+		panic(err)
+	}
+	return s
+}
+
+// StreamScript returns scripts/stream/<name> (backup.sh or restore.sh) prepended with scripts/stream/common.sh. It runs under bash in the single Stream container.
+func StreamScript(name string) (string, error) {
+	common, err := streamScripts.ReadFile("scripts/stream/common.sh")
+	if err != nil {
+		return "", fmt.Errorf("embedded stream common.sh: %w", err)
+	}
+	b, err := streamScripts.ReadFile("scripts/stream/" + name)
+	if err != nil {
+		return "", fmt.Errorf("embedded stream script %s: %w", name, err)
+	}
+	c := string(common)
+	if !strings.HasSuffix(c, "\n") {
+		c += "\n"
+	}
+	return c + string(b), nil
+}
+
+// MustStreamScript is StreamScript and panics on a missing file.
+func MustStreamScript(name string) string {
+	s, err := StreamScript(name)
 	if err != nil {
 		panic(err)
 	}

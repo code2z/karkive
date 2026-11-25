@@ -20,17 +20,16 @@ find_latest() {
     *)         S3_NAME='pg_dump-*.pgdump.gz.gpg' ;;
   esac
   log "finding latest ${S3_NAME} under ${PREFIX}/"
-  LATEST="$(mc find "${PREFIX}/" \
-    --name "${S3_NAME}" \
-    | sort \
-    | tail -n 1)"
+  # Newest by upload time (S3 LastModified), not by name.
+  LATEST="$(rclone lsf --files-only --format tp --separator '|' --include "${S3_NAME}" "${PREFIX}/" \
+    | sort | tail -n 1 | cut -d'|' -f2-)"
   if [ -z "${LATEST}" ]; then
     log "ERROR: no ${S3_NAME} under ${PREFIX}/" >&2
     mark_failed
     exit 1
   fi
   log "selected latest backup: ${LATEST}"
-  printf '%s' "${LATEST}"
+  printf '%s' "${PREFIX}/${LATEST}"
 }
 wait_for "${WORKDIR}/.step-cleanup-done" "cleanup"
 already_done_hold "${WORKDIR}/.step-fetch-done" "fetch"
@@ -39,13 +38,13 @@ log "stage start: fetch bucket=${S3_BUCKET} path=${S3_PATH}"
 log "scratch dir=${WORKDIR}"
 log "clearing workdir dumps under ${WORKDIR} (keep .step-cleanup-done)"
 rm -f "${WORKDIR}/dump"*
-log "configuring mc alias endpoint=${S3_ENDPOINT}"
-mc alias set backup "${S3_ENDPOINT}" "${S3_ACCESS_KEY}" "${S3_SECRET_KEY}"
-PREFIX="backup/${S3_BUCKET}/${S3_PATH}"
+log "configuring rclone endpoint=${S3_ENDPOINT}"
+rclone_s3_init
+PREFIX="${S3_PREFIX}"
 if [ -n "${BACKUP_FILE:-}" ]; then
   SRC="${PREFIX}/${BACKUP_FILE}"
   log "checking explicit BACKUP_FILE=${BACKUP_FILE}"
-  if mc stat "${SRC}" >/dev/null 2>&1; then
+  if [ -n "$(rclone lsf --files-only "${SRC}" 2>/dev/null)" ]; then
     log "BACKUP_FILE exists: ${SRC}"
   else
     log "BACKUP_FILE not found: ${SRC}"
@@ -70,7 +69,7 @@ else
   fi
 fi
 log "fetching ${SRC}"
-mc cp "${SRC}" "${WORKDIR}/dump.gz.gpg"
+rclone copyto "${SRC}" "${WORKDIR}/dump.gz.gpg"
 log "fetched size=$(wc -c < "${WORKDIR}/dump.gz.gpg") bytes"
 touch "${WORKDIR}/.step-fetch-done"
 log "wrote marker .step-fetch-done; stage work done"

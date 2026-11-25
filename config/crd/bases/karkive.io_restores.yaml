@@ -147,8 +147,8 @@ spec:
                         type: string
                     type: object
                   mc:
-                    description: Mc is the minio client image used for s3-sync and
-                      fetch.
+                    description: 'Mc is deprecated and ignored since 0.2.0: Stage
+                      mode uses Rclone for s3-sync and fetch.'
                     properties:
                       image:
                         description: Image is registry/repository:tag.
@@ -167,8 +167,32 @@ spec:
                         description: PullPolicy for the container. Default IfNotPresent.
                         type: string
                     type: object
+                  rclone:
+                    description: Rclone is used for s3-sync and fetch in Stage mode.
+                      It needs /bin/sh and rclone.
+                    properties:
+                      image:
+                        description: Image is registry/repository:tag.
+                        type: string
+                      pullPolicy:
+                        description: PullPolicy for the container. Default IfNotPresent.
+                        type: string
+                    type: object
                   redis:
                     description: Redis is used for redis-cli dump and restore.
+                    properties:
+                      image:
+                        description: Image is registry/repository:tag.
+                        type: string
+                      pullPolicy:
+                        description: PullPolicy for the container. Default IfNotPresent.
+                        type: string
+                    type: object
+                  runner:
+                    description: Runner is the single container of pipeline mode Stream;
+                      the default is the per-engine karkive-runner-<engine> image.
+                      It needs bash, the engine's client tools (pg_dump/pg_restore,
+                      mariadb-dump, redis-cli, or GNU tar), zstd, gpg, and rclone.
                     properties:
                       image:
                         description: Image is registry/repository:tag.
@@ -249,7 +273,8 @@ spec:
                 - name
                 type: object
               mcConfigDir:
-                description: McConfigDir for the minio client. Default /tmp/mc-config.
+                description: McConfigDir is deprecated and ignored since 0.2.0 (the
+                  S3 client is rclone, configured from env).
                 type: string
               persistence:
                 description: Persistence for the restore workdir. Set enabled=false
@@ -282,6 +307,38 @@ spec:
                   storageClassName:
                     description: StorageClassName of the PVC. Empty uses the cluster
                       default.
+                    type: string
+                type: object
+              pipeline:
+                description: Pipeline selects Stage (default) or Stream and tunes
+                  it. A Stream Restore reads Stream and Stage objects and loads Postgres
+                  custom/directory dumps with pg_restore --jobs.
+                properties:
+                  compressionLevel:
+                    description: CompressionLevel is the zstd level in Stream mode
+                      (pg_dump --compress=zstd:N, otherwise zstd -N). Default 3. Ignored
+                      in Stage mode (gzip).
+                    format: int32
+                    maximum: 19
+                    minimum: 1
+                    type: integer
+                  jobs:
+                    description: 'Jobs is the parallelism of the database tools in
+                      Stream mode: pg_dump --jobs (directory format, scratch holds
+                      the compressed dump), pg_restore --jobs and vacuumdb --jobs.
+                      Default 1 for Backup and 2 for Restore. Ignored in Stage mode.'
+                    format: int32
+                    maximum: 32
+                    minimum: 1
+                    type: integer
+                  mode:
+                    default: Stage
+                    description: |-
+                      Mode is Stage (default) or Stream.
+                      Stream objects are named *.dump.gpg / *.dir.tar.gpg (postgres) and *.zst.gpg (other engines). A Stream Restore also reads Stage objects (*.gz.gpg); a Stage Restore reads only Stage objects.
+                    enum:
+                    - Stage
+                    - Stream
                     type: string
                 type: object
               postgresSecret:
@@ -565,6 +622,65 @@ spec:
                   restore:
                     description: ResourceRequirements describes the compute resource
                       requirements.
+                    properties:
+                      claims:
+                        description: |-
+                          Claims lists the names of resources, defined in spec.resourceClaims,
+                          that are used by this container.
+
+                          This is an alpha field and requires enabling the
+                          DynamicResourceAllocation feature gate.
+
+                          This field is immutable. It can only be set for containers.
+                        items:
+                          description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                          properties:
+                            name:
+                              description: |-
+                                Name must match the name of one entry in pod.spec.resourceClaims of
+                                the Pod where this field is used. It makes that resource available
+                                inside a container.
+                              type: string
+                            request:
+                              description: |-
+                                Request is the name chosen for a request in the referenced claim.
+                                If empty, everything from the claim is made available, otherwise
+                                only the result of this request.
+                              type: string
+                          required:
+                          - name
+                          type: object
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
+                      limits:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        description: |-
+                          Limits describes the maximum amount of compute resources allowed.
+                          More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                        type: object
+                      requests:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        description: |-
+                          Requests describes the minimum amount of compute resources required.
+                          If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                          otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                          More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                        type: object
+                    type: object
+                  stream:
+                    description: Stream is the single container of pipeline mode Stream.
                     properties:
                       claims:
                         description: |-
