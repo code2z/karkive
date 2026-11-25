@@ -82,23 +82,26 @@ restore_postgres() {
   meta="$(rclone cat "${S3_PREFIX}/${OBJ%.gpg}.meta" 2>/dev/null || true)"
   ts_ver="$(printf '%s\n' "$meta" | sed -n 's/^SRC_TS_VERSION=//p')"
   pg_restore --list "${dump}" > "${RUN_DIR}/toc.all"
-  if [ -z "${ts_ver}" ] && grep -qE ' EXTENSION - timescaledb( |$)' "${RUN_DIR}/toc.all"; then
+  if [ -z "${ts_ver}" ] && grep -qE ' EXTENSION - "?timescaledb"?( |$)' "${RUN_DIR}/toc.all"; then
     ts_ver="$(q -d postgres -c "SELECT default_version FROM pg_available_extensions WHERE name = 'timescaledb'")"
     log "WARN: no .meta with the source TimescaleDB version; using the target default ${ts_ver}"
   fi
 
   # pgAudit objects (extension, event triggers, functions) are dropped from the TOC when STRIP_PGAUDIT_EXTENSION is on.
-  local skip=' (EXTENSION - timescaledb|COMMENT - EXTENSION timescaledb)( |$)'
-  if truthy "${STRIP_PGAUDIT_EXTENSION:-true}"; then
-    skip="${skip}|(EXTENSION - pgaudit|COMMENT - EXTENSION pgaudit|EVENT TRIGGER - pgaudit_|FUNCTION - pgaudit_|ACL - FUNCTION pgaudit_)"
-  fi
+  # TOC names are quoted with --quote-all-identifiers (EXTENSION - "pgaudit"), so match an optional quote.
+  local q='"?' skip=''
   if [ -n "${ts_ver}" ]; then
-    grep -v -E "${skip}" "${RUN_DIR}/toc.all" > "${RUN_DIR}/toc.list"
-  elif truthy "${STRIP_PGAUDIT_EXTENSION:-true}"; then
-    grep -v -E "(EXTENSION - pgaudit|COMMENT - EXTENSION pgaudit|EVENT TRIGGER - pgaudit_|FUNCTION - pgaudit_|ACL - FUNCTION pgaudit_)" "${RUN_DIR}/toc.all" > "${RUN_DIR}/toc.list"
+    skip=" (EXTENSION - ${q}timescaledb${q}|COMMENT - EXTENSION ${q}timescaledb${q})( |\$)"
+  fi
+  if truthy "${STRIP_PGAUDIT_EXTENSION:-true}"; then
+    skip="${skip:+${skip}|}(EXTENSION - ${q}pgaudit${q}|COMMENT - EXTENSION ${q}pgaudit${q}|EVENT TRIGGER - ${q}pgaudit_|FUNCTION [^ ]* ?${q}pgaudit_|ACL [^ ]* ?FUNCTION [^ ]* ?${q}pgaudit_)"
+  fi
+  if [ -n "${skip}" ]; then
+    grep -v -E "${skip}" "${RUN_DIR}/toc.all" > "${RUN_DIR}/toc.list" || true
   else
     cp "${RUN_DIR}/toc.all" "${RUN_DIR}/toc.list"
   fi
+  log "TOC: $(wc -l < "${RUN_DIR}/toc.all") entries, $(( $(wc -l < "${RUN_DIR}/toc.all") - $(wc -l < "${RUN_DIR}/toc.list") )) skipped (extension/pgAudit)"
 
   # Roles the dump names (owners and grants). Missing ones are created NOLOGIN.
   pg_restore --schema-only --use-list="${RUN_DIR}/toc.list" --file=- "${dump}" \
