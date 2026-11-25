@@ -77,7 +77,33 @@ After the upload, `s3-sync` deletes objects older than `spec.s3.retentionDays`. 
 | `redis` | `redis-cli --rdb` | ephemeral `redis-server` + `REPLICAOF` |
 | `pvc` | GNU `tar` of a read-only PVC (`pvcdump`) | not implemented; [restore manually](#pvc-backup) |
 
-Shared stages use BusyBox (`find` / `gzip`), `vladgh/gpg`, and MinIO `mc`. Engine images default to CloudNativePG PostgreSQL 18.4, MariaDB 10.6, Redis 7.4, and Debian trixie-slim (GNU tar).
+Shared stages use BusyBox (`find` / `gzip`), `vladgh/gpg`, and `rclone` (S3). Engine images default to CloudNativePG PostgreSQL 18.4, MariaDB 10.6, Redis 7.4, and Debian trixie-slim (GNU tar).
+
+### Stream pipeline (`spec.pipeline.mode: Stream`)
+
+One container per Job instead of five, and no plain dump on disk:
+
+- **Backup:** clean up the local scratch, then `dump | compress | gpg | rclone rcat` straight into S3, then prune S3 objects past `retentionDays` (best effort).
+- **Restore:** `rclone cat | gpg -d`, then load. Postgres dumps load with `pg_restore --jobs`; MariaDB streams into `mariadb`.
+
+| Engine | Backup | Restore | Object |
+| --- | --- | --- | --- |
+| `postgres` | `pg_dump --format=custom --compress=zstd:N`; with `jobs > 1`, `--format=directory --jobs` to scratch, then tar | `pg_restore --jobs`, `vacuumdb --analyze-only`; TimescaleDB loads at the source's extension version (from the `.meta` sidecar), then `ALTER EXTENSION UPDATE` | `pg_dump-<db>-<ts>.dump.gpg` / `.dir.tar.gpg` |
+| `mariadb` | `mariadb-dump --single-transaction --quick \| zstd -T0` | streamed into `mariadb` (any target database name) | `mysqldump-<db>-<ts>.sql.zst.gpg` |
+| `redis` | `redis-cli --rdb - \| zstd -T0` | RDB into an in-pod `redis-server`, target `REPLICAOF` it (target must reach the Job pod on `:6380`) | `redisdump-<name>-<ts>.rdb.zst.gpg` |
+| `pvc` | `tar \| zstd -T0` | not implemented | `pvcdump-<claim>-<ts>.tar.zst.gpg` |
+
+```yaml
+spec:
+  pipeline:
+    mode: Stream
+    jobs: 4              # pg_dump/pg_restore --jobs (default 1 backup, 2 restore)
+    compressionLevel: 3  # zstd 1-19
+```
+
+A Stream Restore also reads Stage objects (`*.gz.gpg`), so you can switch a Restore first and the Backup later. A Stage Restore cannot read Stream objects. On a 300 MB pgbench database the Stream dump was 1.6 MiB against 8.4 MiB for plain SQL + gzip, and the restore took 4 s with `--jobs=4`.
+
+Each engine has its own runner image, `ghcr.io/mahdidarabi/karkive-runner-<engine>` (`runner/<engine>/`). It holds the client tools, `zstd`, `gpg` and `rclone`. The `Runners` workflow builds an image only when its folder changes. Tags name the tool versions inside, `<client><version>-rclone<version>-r<revision>` (for example `karkive-runner-postgres:pg18.7-rclone1.76.0-r1`), and come from `runner/<engine>/TAG`. Bump the versions or the `-r` revision with every Dockerfile change: CI never overwrites a published tag. Override it per CR with `spec.images.runner`, or operator-wide with `defaults.runnerImages`.
 
 ### Runtime
 
@@ -106,13 +132,13 @@ Redis restore starts an ephemeral `redis-server` in the Job and has the target `
 
 Images are published to `ghcr.io/mahdidarabi/karkive` from GitHub Actions on `main` (`latest`, `main`, `sha-<git-sha>`) and on tags `v*` (semver). Helm charts are pushed to GHCR on tags `v*`. `Chart.yaml` `version` and `appVersion` must match the tag without the `v` prefix.
 
-Current release: **`0.1.0`**
+Current release: **`0.2.0`**
 
 ```bash
-helm show chart oci://ghcr.io/mahdidarabi/charts/karkive --version 0.1.0
+helm show chart oci://ghcr.io/mahdidarabi/charts/karkive --version 0.2.0
 
 helm install karkive oci://ghcr.io/mahdidarabi/charts/karkive \
-  --version 0.1.0 \
+  --version 0.2.0 \
   -n karkive-system --create-namespace
 ```
 
@@ -120,7 +146,7 @@ With Prometheus Operator scrape, alerts, and a Grafana dashboard ConfigMap:
 
 ```bash
 helm install karkive oci://ghcr.io/mahdidarabi/charts/karkive \
-  --version 0.1.0 \
+  --version 0.2.0 \
   -n karkive-system --create-namespace \
   --set metrics.serviceMonitor.enabled=true \
   --set metrics.prometheusRule.enabled=true \
@@ -131,7 +157,7 @@ On GitOps (Argo CD), prefer cert-manager for webhook serving certs so Helm does 
 
 ```bash
 helm install karkive oci://ghcr.io/mahdidarabi/charts/karkive \
-  --version 0.1.0 \
+  --version 0.2.0 \
   -n karkive-system --create-namespace \
   --set webhook.certManager.enabled=true
 ```
@@ -198,7 +224,8 @@ Useful knobs:
 | `spec.job.backoffLimit` | `3` | Job retries (new pod) |
 | `spec.job.ttlSecondsAfterFinished` | `86400` | Cleanup finished Jobs |
 | `spec.runtime.mode` | `CronJob` | `CronJob` (default) or `CronJobWithVolumeHolder`. `PersistentPodWithTriggerJob` and `PersistentPodWithInPodCron` are reserved and rejected until implemented |
-| `spec.images` | operator defaults | Shared `ImageSet`: busybox / gpg / postgres / mariadb / redis / mc |
+| `spec.pipeline` | `mode: Stage` | `Stage` (one container per stage) or `Stream` (one container, streamed to S3); `jobs`, `compressionLevel` |
+| `spec.images` | operator defaults | Shared `ImageSet`: busybox / gpg / postgres / mariadb / redis / tar / rclone / runner (`mc` is ignored since 0.2.0) |
 | `spec.resources` | — | Per-stage CPU/memory (`cleanup`, `dump`, `compress`, `encrypt`, `s3Sync`); `dump` is `pvcdump` for engine `pvc` |
 | `spec.component` | CR name | `app.kubernetes.io/component` label |
 
@@ -424,7 +451,8 @@ Operator-wide defaults (Helm `values.yaml` → flags):
 | `defaults.mariadbImage` | `--mariadb-image` | `mariadb:10.6` |
 | `defaults.redisImage` | `--redis-image` | `redis:7.4` |
 | `defaults.tarImage` | `--tar-image` | `debian:trixie-slim` (GNU tar, engine `pvc`) |
-| `defaults.mcImage` | `--mc-image` | `minio/mc:RELEASE.2025-08-13T08-35-41Z` |
+| `defaults.rcloneImage` | `--rclone-image` | `rclone/rclone:1.76.0` (Stage-mode s3-sync / fetch) |
+| `defaults.runnerImages.<engine>` | `--runner-<engine>-image` | `ghcr.io/mahdidarabi/karkive-runner-<engine>:<runner/<engine>/TAG>`, e.g. `pg18.7-rclone1.76.0-r1` (Stream mode) |
 | `defaults.s3.endpoint` | `--default-s3-endpoint` | empty (required on the CR when S3 is enabled, unless set) |
 | `defaults.s3.bucket` | `--default-s3-bucket` | empty |
 
