@@ -104,8 +104,10 @@ restore_postgres() {
   log "TOC: $(wc -l < "${RUN_DIR}/toc.all") entries, $(( $(wc -l < "${RUN_DIR}/toc.all") - $(wc -l < "${RUN_DIR}/toc.list") )) skipped (extension/pgAudit)"
 
   # Roles the dump names (owners and grants). Missing ones are created NOLOGIN.
+  # Same anchors as the Stage restore: grantees end the statement (TO "x"; / FROM "x";), so schema names such as "public" in ON SCHEMA "public" TO ... are not read as roles.
   pg_restore --schema-only --use-list="${RUN_DIR}/toc.list" --file=- "${dump}" \
-    | grep -oE '(OWNER TO|FOR ROLE| TO| FROM) "[^"]+"' | sed -E 's/^(OWNER TO|FOR ROLE| TO| FROM) "//; s/"$//' | sort -u > "${RUN_DIR}/roles" || true
+    | grep -oE '(OWNER TO "[^"]+"|FOR ROLE "[^"]+"| TO "[^"]+";| FROM "[^"]+";)' \
+    | sed -E 's/^(OWNER TO|FOR ROLE| TO| FROM) "//; s/";?$//' | sort -u > "${RUN_DIR}/roles" || true
   ensure_role "$owner" LOGIN
   while IFS= read -r role; do
     ensure_role "$role" NOLOGIN
@@ -147,7 +149,7 @@ restore_postgres() {
 
 ensure_role() {
   local role="$1" login="${2:-NOLOGIN}"
-  case "$role" in ''|PUBLIC|CURRENT_USER|SESSION_USER|CURRENT_ROLE|postgres) return 0 ;; esac
+  case "${role,,}" in ''|public|current_user|session_user|current_role|postgres|pg_*) return 0 ;; esac
   [[ "$role" =~ ^[A-Za-z0-9_.-]+$ ]] || { log "WARN: skipping role with unsupported name ${role}"; return 0; }
   psql -X -v ON_ERROR_STOP=1 -q -d postgres -c "DO \$\$ BEGIN CREATE ROLE \"${role}\" ${login}; EXCEPTION WHEN duplicate_object THEN NULL; END \$\$;"
 }
