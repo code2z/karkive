@@ -43,11 +43,7 @@ stream_init() {
     LOG_FILE="${WORK_ROOT}/logs/${HOSTNAME:-stream}.log"
     : > "${LOG_FILE}"
   fi
-  export GNUPGHOME="${RUN_DIR}/gnupg"
-  mkdir -p "${GNUPGHOME}"
-  chmod 700 "${GNUPGHOME}"
-  GPG_PASSFILE="${GPG_PASSFILE:-/run/secrets/gpg/gpg_passphrase}"
-  [ -s "${GPG_PASSFILE}" ] || die "gpg passphrase file ${GPG_PASSFILE} is missing or empty"
+  encryption_init
   trap 'rc=$?; rm -rf "${RUN_DIR}"; [ "$rc" -eq 0 ] || log "ERROR: failed with exit ${rc}"; exit "$rc"' EXIT
 }
 
@@ -77,13 +73,52 @@ s3_init() {
   S3_PREFIX="s3:${S3_BUCKET}/${S3_PATH%/}"
 }
 
-gpg_encrypt() {
-  gpg --batch --yes --quiet --pinentry-mode loopback --passphrase-file "${GPG_PASSFILE}" \
-    --symmetric --cipher-algo AES256 --compress-algo none --output -
+# spec.encryption.method: gpg (default, symmetric passphrase) or age (X25519).
+# A Backup with age holds only the public key(s) (AGE_RECIPIENTS_FILE); a Restore holds the private key (AGE_IDENTITY_FILE).
+# ENC_EXT is the object suffix: gpg or age.
+encryption_init() {
+  ENCRYPTION_METHOD="${ENCRYPTION_METHOD:-gpg}"
+  case "${ENCRYPTION_METHOD}" in
+    gpg)
+      ENC_EXT=gpg
+      export GNUPGHOME="${RUN_DIR}/gnupg"
+      mkdir -p "${GNUPGHOME}"
+      chmod 700 "${GNUPGHOME}"
+      GPG_PASSFILE="${GPG_PASSFILE:-/run/secrets/gpg/gpg_passphrase}"
+      [ -s "${GPG_PASSFILE}" ] || die "gpg passphrase file ${GPG_PASSFILE} is missing or empty"
+      ;;
+    age)
+      ENC_EXT=age
+      case "${STAGE:-}" in
+        backup)
+          AGE_RECIPIENTS_FILE="${AGE_RECIPIENTS_FILE:-/run/secrets/age/age_recipient}"
+          [ -s "${AGE_RECIPIENTS_FILE}" ] || die "age recipients file ${AGE_RECIPIENTS_FILE} is missing or empty"
+          ;;
+        *)
+          AGE_IDENTITY_FILE="${AGE_IDENTITY_FILE:-/run/secrets/age/age_identity}"
+          [ -s "${AGE_IDENTITY_FILE}" ] || die "age identity file ${AGE_IDENTITY_FILE} is missing or empty"
+          ;;
+      esac
+      ;;
+    *) die "unknown ENCRYPTION_METHOD ${ENCRYPTION_METHOD} (gpg or age)" ;;
+  esac
 }
 
-gpg_decrypt() {
-  gpg --batch --yes --quiet --pinentry-mode loopback --passphrase-file "${GPG_PASSFILE}" --decrypt
+encrypt_stream() {
+  if [ "${ENCRYPTION_METHOD}" = age ]; then
+    age --encrypt --recipients-file "${AGE_RECIPIENTS_FILE}"
+  else
+    gpg --batch --yes --quiet --pinentry-mode loopback --passphrase-file "${GPG_PASSFILE}" \
+      --symmetric --cipher-algo AES256 --compress-algo none --output -
+  fi
+}
+
+decrypt_stream() {
+  if [ "${ENCRYPTION_METHOD}" = age ]; then
+    age --decrypt --identity "${AGE_IDENTITY_FILE}"
+  else
+    gpg --batch --yes --quiet --pinentry-mode loopback --passphrase-file "${GPG_PASSFILE}" --decrypt
+  fi
 }
 
 # Compression level for zstd (1-19). pg_dump compresses itself.
@@ -97,11 +132,11 @@ compress_stream() {
   zstd -q -T0 "-$(zstd_level)" -c
 }
 
-# Decompress by object suffix: .zst (Stream) or .gz (Stage mode, readable by Stream restores).
+# Decompress by object suffix: .zst (Stream) or .gz (Stage mode, readable by Stream restores); encrypted with .gpg or .age.
 decompress_stream() {
   case "$1" in
-    *.zst.gpg) zstd -q -d -c ;;
-    *.gz.gpg) pigz -d -c 2>/dev/null || gzip -d -c ;;
+    *.zst.gpg|*.zst.age) zstd -q -d -c ;;
+    *.gz.gpg|*.gz.age) pigz -d -c 2>/dev/null || gzip -d -c ;;
     *) cat ;;
   esac
 }

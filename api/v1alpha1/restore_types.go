@@ -35,9 +35,15 @@ type RestoreSpec struct {
 	// S3 source of encrypted dumps.
 	S3 S3Spec `json:"s3"`
 
-	// SecretRef holds s3_access_key, s3_secret_key, gpg_passphrase.
+	// SecretRef holds s3_access_key, s3_secret_key, and gpg_passphrase
+	// (encryption method gpg) or age_identity (method age).
 	// Target DB credentials come from postgresSecret / mariadbSecret / redisSecret.
 	SecretRef corev1.LocalObjectReference `json:"secretRef"`
+
+	// Encryption must match the Backup that wrote the objects: gpg (default)
+	// or age (the Restore holds the private key age_identity). A Restore picks
+	// only objects of its method (.gpg or .age).
+	Encryption *EncryptionSpec `json:"encryption,omitempty"`
 
 	// PostgresSecret is the sandbox Cluster Secret (PGUSER/PGPASSWORD).
 	PostgresSecret *SecretKeySelector `json:"postgresSecret,omitempty"`

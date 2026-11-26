@@ -30,6 +30,7 @@ kubectl get backups,restores
 - [Backup](#backup)
 - [Restore](#restore)
 - [Secrets](#secrets)
+  - [Encryption: gpg or age](#encryption-gpg-or-age)
 - [Status](#status)
 - [Monitoring](#monitoring)
 - [Webhooks](#webhooks)
@@ -77,14 +78,14 @@ After the upload, `s3-sync` deletes objects older than `spec.s3.retentionDays`. 
 | `redis` | `redis-cli --rdb` | ephemeral `redis-server` + `REPLICAOF` |
 | `pvc` | GNU `tar` of a read-only PVC (`pvcdump`) | not implemented; [restore manually](#pvc-backup) |
 
-Shared stages use BusyBox (`find` / `gzip`), `vladgh/gpg`, and `rclone` (S3). Engine images default to CloudNativePG PostgreSQL 18.4, MariaDB 10.6, Redis 7.4, and Debian trixie-slim (GNU tar).
+Shared stages use BusyBox (`find` / `gzip`), `vladgh/gpg` (or an `age` image with [`spec.encryption.method: age`](#encryption-gpg-or-age)), and `rclone` (S3). Engine images default to CloudNativePG PostgreSQL 18.4, MariaDB 10.6, Redis 7.4, and Debian trixie-slim (GNU tar).
 
 ### Stream pipeline (`spec.pipeline.mode: Stream`)
 
 One container per Job instead of five, and no plain dump on disk:
 
-- **Backup:** clean up the local scratch, then `dump | compress | gpg | rclone rcat` straight into S3, then prune S3 objects past `retentionDays` (best effort).
-- **Restore:** `rclone cat | gpg -d`, then load. Postgres dumps load with `pg_restore --jobs`; MariaDB streams into `mariadb`.
+- **Backup:** clean up the local scratch, then `dump | compress | gpg | rclone rcat` (or `age -r` with `spec.encryption.method: age`) straight into S3, then prune S3 objects past `retentionDays` (best effort).
+- **Restore:** `rclone cat | gpg -d` (or `age -d -i`), then load. Postgres dumps load with `pg_restore --jobs`; MariaDB streams into `mariadb`.
 
 | Engine | Backup | Restore | Object |
 | --- | --- | --- | --- |
@@ -101,9 +102,9 @@ spec:
     compressionLevel: 3  # zstd 1-19
 ```
 
-A Stream Restore also reads Stage objects (`*.gz.gpg`), so you can switch a Restore first and the Backup later. A Stage Restore cannot read Stream objects. On a 300 MB pgbench database the Stream dump was 1.6 MiB against 8.4 MiB for plain SQL + gzip, and the restore took 4 s with `--jobs=4`.
+With `spec.encryption.method: age` every object above ends in `.age` instead of `.gpg`. A Stream Restore also reads Stage objects (`*.gz.gpg`, or `*.gz.age` with age), so you can switch a Restore first and the Backup later. A Stage Restore cannot read Stream objects. On a 300 MB pgbench database the Stream dump was 1.6 MiB against 8.4 MiB for plain SQL + gzip, and the restore took 4 s with `--jobs=4`.
 
-Each engine has its own runner image, `ghcr.io/mahdidarabi/karkive-runner-<engine>` (`runner/<engine>/`). It holds the client tools, `zstd`, `gpg` and `rclone`. The `Runners` workflow builds an image only when its folder changes. Tags name the tool versions inside, `<client><version>-rclone<version>-r<revision>` (for example `karkive-runner-postgres:pg18.7-rclone1.76.0-r1`), and come from `runner/<engine>/TAG`. Bump the versions or the `-r` revision with every Dockerfile change: CI never overwrites a published tag. Override it per CR with `spec.images.runner`, or operator-wide with `defaults.runnerImages`.
+Each engine has its own runner image, `ghcr.io/mahdidarabi/karkive-runner-<engine>` (`runner/<engine>/`). It holds the client tools, `zstd`, `gpg`, `age` and `rclone`. The `Runners` workflow builds an image only when its folder changes. Tags name the tool versions inside, `<client><version>-rclone<version>-r<revision>` (for example `karkive-runner-postgres:pg18.7-rclone1.76.0-r2`), and come from `runner/<engine>/TAG`. Bump the versions or the `-r` revision with every Dockerfile change: CI never overwrites a published tag. Override it per CR with `spec.images.runner`, or operator-wide with `defaults.runnerImages`.
 
 ### Runtime
 
@@ -207,6 +208,8 @@ spec:
     storageClassName: standard
   localRetentionDays: 7     # encrypted dumps kept on the PVC
   logFileEnabled: false      # true → also write logs/<pod>.log on the volume
+  # encryption:
+  #   method: age             # gpg (default) | age; age needs age_recipient in the Secret
 ```
 
 MariaDB, Redis, and PVC samples live under [`examples/`](examples/) (`backup-mariadb.yaml`, `backup-redis.yaml`, `backup-pvc.yaml`).
@@ -224,8 +227,9 @@ Useful knobs:
 | `spec.job.backoffLimit` | `3` | Job retries (new pod) |
 | `spec.job.ttlSecondsAfterFinished` | `86400` | Cleanup finished Jobs |
 | `spec.runtime.mode` | `CronJob` | `CronJob` (default) or `CronJobWithVolumeHolder`. `PersistentPodWithTriggerJob` and `PersistentPodWithInPodCron` are reserved and rejected until implemented |
+| `spec.encryption.method` | `gpg` | `gpg` (symmetric, `gpg_passphrase`) or `age` (public key `age_recipient`); see [Encryption](#encryption-gpg-or-age) |
 | `spec.pipeline` | `mode: Stage` | `Stage` (one container per stage) or `Stream` (one container, streamed to S3); `jobs`, `compressionLevel` |
-| `spec.images` | operator defaults | Shared `ImageSet`: busybox / gpg / postgres / mariadb / redis / tar / rclone / runner (`mc` is ignored since 0.2.3) |
+| `spec.images` | operator defaults | Shared `ImageSet`: busybox / gnupg / age / postgres / mariadb / redis / tar / rclone / runner (`mc` is ignored since 0.2.3) |
 | `spec.resources` | — | Per-stage CPU/memory (`cleanup`, `dump`, `compress`, `encrypt`, `s3Sync`); `dump` is `pvcdump` for engine `pvc` |
 | `spec.component` | CR name | `app.kubernetes.io/component` label |
 
@@ -237,7 +241,7 @@ kubectl create job --from=cronjob/karkive-backup-app-postgres app-postgres-manua
 
 ### PVC backup
 
-`engine: pvc` archives the files of an existing PersistentVolumeClaim instead of dumping a database: `cleanup` → `pvcdump` → `compress` → `encrypt` → `s3-sync`. Objects are named `pvcdump-<claim>-<yyyy-mm-dd-HH-MM>.tar.gz.gpg`. `spec.database` is not used.
+`engine: pvc` archives the files of an existing PersistentVolumeClaim instead of dumping a database: `cleanup` → `pvcdump` → `compress` → `encrypt` → `s3-sync`. Objects are named `pvcdump-<claim>-<yyyy-mm-dd-HH-MM>.tar.gz.gpg` (`.tar.gz.age` with `spec.encryption.method: age`). `spec.database` is not used.
 
 ```yaml
 apiVersion: karkive.io/v1alpha1
@@ -258,7 +262,7 @@ spec:
   s3:
     path: nextcloud/pvcdump
   secretRef:
-    name: backup-nextcloud-data   # gpg_passphrase (+ S3 keys); no username/password
+    name: backup-nextcloud-data   # gpg_passphrase or age_recipient (+ S3 keys); no username/password
   persistence:
     size: 50Gi
 ```
@@ -284,11 +288,12 @@ Things to know:
 ```bash
 gpg --batch --passphrase-file gpg_passphrase --decrypt pvcdump-nextcloud-data-2026-09-27-03-00.tar.gz.gpg \
   | tar -xz --numeric-owner -C /path/to/mounted/claim
+# age: age --decrypt -i age_identity pvcdump-nextcloud-data-2026-09-27-03-00.tar.gz.age | tar -xz --numeric-owner -C /path/to/mounted/claim
 ```
 
 ## Restore
 
-Restore `secretRef` is S3 + GPG only. Target database credentials come from `spec.postgresSecret`, `spec.mariadbSecret`, or `spec.redisSecret`.
+Restore `secretRef` is S3 + the decryption key only (`gpg_passphrase`, or `age_identity` with `spec.encryption.method: age`). Target database credentials come from `spec.postgresSecret`, `spec.mariadbSecret`, or `spec.redisSecret`.
 
 ```yaml
 apiVersion: karkive.io/v1alpha1
@@ -321,12 +326,15 @@ spec:
   useLatestBackupAsFallback: true
   dropDatabaseIfExists: true
   stripPgAuditExtension: true
+  # encryption:
+  #   method: age             # must match the Backup; needs age_identity in the Secret
 ```
 
 | Field | Default | Purpose |
 | --- | --- | --- |
 | `spec.backupFile` | empty | Specific S3 object name |
-| `spec.useLatestBackupAsFallback` | `true` | Newest dump matching the engine prefix when `backupFile` is empty or missing |
+| `spec.useLatestBackupAsFallback` | `true` | Newest dump matching the engine prefix and encryption suffix (`.gpg` / `.age`) when `backupFile` is empty or missing |
+| `spec.encryption.method` | `gpg` | Must match the Backup: `gpg` (`gpg_passphrase`) or `age` (private key `age_identity`). Only objects of this method are picked |
 | `spec.dropDatabaseIfExists` | `true` | Drop / replace a non-empty target first (`REPLICAOF` on Redis) |
 | `spec.stripPgAuditExtension` | `true` | Strip pgAudit extension, event-trigger, and function DDL from Postgres dumps |
 | `spec.logFileEnabled` | `false` | Also write stage logs to `logs/<pod>.log` on the volume |
@@ -346,13 +354,14 @@ The operator does not create or mutate Secrets. Apply them yourself in the CR na
 | `password` | DB password. Not used for engine `pvc` |
 | `s3_access_key` | S3 (omit when `spec.s3.enabled` is false) |
 | `s3_secret_key` | S3 (omit when `spec.s3.enabled` is false) |
-| `gpg_passphrase` | Symmetric encryption of the dump or archive |
+| `gpg_passphrase` | Symmetric encryption of the dump or archive (`spec.encryption.method: gpg`, the default) |
+| `age_recipient` | Instead of `gpg_passphrase` with `spec.encryption.method: age`: one or more age public keys (`age1...`), one per line |
 
 **Restore** splits credentials:
 
 | Source | Keys |
 | --- | --- |
-| `spec.secretRef` | `s3_access_key`, `s3_secret_key`, `gpg_passphrase` |
+| `spec.secretRef` | `s3_access_key`, `s3_secret_key`, and `gpg_passphrase` (gpg) or `age_identity` (age: the `AGE-SECRET-KEY-1...` private key) |
 | `spec.postgresSecret` / `mariadbSecret` / `redisSecret` | `username` / `password` by default (`usernameKey` / `passwordKey` override) |
 
 ```yaml
@@ -371,6 +380,43 @@ stringData:
 ```
 
 See [`config/samples/backup-secret.yaml`](config/samples/backup-secret.yaml).
+
+### Encryption: gpg or age
+
+`spec.encryption.method` selects how dumps are encrypted. It is the same field on Backup and Restore, and a Restore must use the method of the Backup it reads.
+
+| Method | Backup Secret key | Restore Secret key | Object suffix |
+| --- | --- | --- | --- |
+| `gpg` (default) | `gpg_passphrase` | `gpg_passphrase` | `.gpg` |
+| `age` | `age_recipient` (public key) | `age_identity` (private key) | `.age` |
+
+With `age` (X25519), a Backup holds only the public key, so a leaked Backup Secret cannot decrypt anything; only Restores hold the private key. `age` is also faster than gpg on large streams. Leaving `spec.encryption` unset keeps the gpg behaviour, so existing CRs do not change.
+
+```bash
+age-keygen -o age.key                      # prints "Public key: age1..."
+kubectl -n backup create secret generic backup-app-postgres \
+  --from-literal=age_recipient="$(age-keygen -y age.key)" \
+  --from-literal=username=app --from-literal=password=change-me \
+  --from-literal=s3_access_key=change-me --from-literal=s3_secret_key=change-me
+kubectl -n backup create secret generic restore-app-postgres \
+  --from-file=age_identity=age.key \
+  --from-literal=s3_access_key=change-me --from-literal=s3_secret_key=change-me
+```
+
+```yaml
+spec:
+  encryption:
+    method: age
+```
+
+- **Naming.** age objects end in `.age` where gpg objects end in `.gpg` (for example `pg_dump-app-<ts>.dump.age`, `mysqldump-<db>-<ts>.sql.gz.age`). The Stream `.meta` sidecar drops the suffix (`pg_dump-app-<ts>.dump.meta`) for both methods.
+- **Restore selection.** "Latest" only considers objects of the Restore's method. A `backupFile` of the other method fails before download.
+- **Retention.** S3 prune and local `retained/` cleanup delete expired `.gpg` and `.age` objects alike, so switching a Backup's method still ages out the old objects.
+- **Switching.** Old gpg objects stay readable by a Restore with `method: gpg` (and `gpg_passphrase`) until they expire.
+- **Images.** Stream runners ship `age`. Stage mode runs encrypt and decrypt in `defaults.ageImage` / `--age-image` (default: the pvc runner image, Debian with `age`) instead of `vladgh/gpg`, which has no `age`. Override per CR with `spec.images.age`. Any image with `/bin/sh` and `age` works.
+- **Manual decrypt:** `age --decrypt -i age.key <object>.age > <object>`.
+
+See [`examples/backup-postgres-age.yaml`](examples/backup-postgres-age.yaml) and [`examples/restore-postgres-age.yaml`](examples/restore-postgres-age.yaml).
 
 ## Status
 
@@ -433,7 +479,7 @@ When one Prometheus holds several KArkive installs (for example clusters sending
 
 ## Webhooks
 
-Validating admission webhooks reject invalid `Backup` / `Restore` specs (cron schedule, required fields, engine-specific restore secrets). They are **on** in the Helm chart and **off** for `make run`.
+Validating admission webhooks reject invalid `Backup` / `Restore` specs (cron schedule, required fields, engine-specific restore secrets, `spec.encryption.method` other than `gpg` / `age`). They are **on** in the Helm chart and **off** for `make run`.
 
 Serving certs default to Helm `genCA`. That Secret changes on every template, which fights GitOps. Set `webhook.certManager.enabled=true` instead.
 
@@ -447,12 +493,13 @@ Operator-wide defaults (Helm `values.yaml` → flags):
 | `leaderElection` | `--leader-elect` | `true` in the chart |
 | `defaults.busyboxImage` | `--busybox-image` | `busybox:1.37` |
 | `defaults.gnupgImage` | `--gnupg-image` | `vladgh/gpg:1.3.11` |
+| `defaults.ageImage` | `--age-image` | `ghcr.io/mahdidarabi/karkive-runner-pvc:trixie-rclone1.76.0-r2` (Stage-mode encrypt / decrypt with `spec.encryption.method: age`; needs `/bin/sh` and `age`) |
 | `defaults.postgresImage` | `--postgres-image` | `cloudnative-pg/postgresql:18.4` |
 | `defaults.mariadbImage` | `--mariadb-image` | `mariadb:10.6` |
 | `defaults.redisImage` | `--redis-image` | `redis:7.4` |
 | `defaults.tarImage` | `--tar-image` | `debian:trixie-slim` (GNU tar, engine `pvc`) |
 | `defaults.rcloneImage` | `--rclone-image` | `rclone/rclone:1.76.0` (Stage-mode s3-sync / fetch) |
-| `defaults.runnerImages.<engine>` | `--runner-<engine>-image` | `ghcr.io/mahdidarabi/karkive-runner-<engine>:<runner/<engine>/TAG>`, e.g. `pg18.7-rclone1.76.0-r1` (Stream mode) |
+| `defaults.runnerImages.<engine>` | `--runner-<engine>-image` | `ghcr.io/mahdidarabi/karkive-runner-<engine>:<runner/<engine>/TAG>`, e.g. `pg18.7-rclone1.76.0-r2` (Stream mode) |
 | `defaults.s3.endpoint` | `--default-s3-endpoint` | empty (required on the CR when S3 is enabled, unless set) |
 | `defaults.s3.bucket` | `--default-s3-bucket` | empty |
 

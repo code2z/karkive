@@ -15,9 +15,9 @@ fallback_enabled() {
 find_latest() {
   DUMP_PREFIX="${DUMP_PREFIX:-pg_dump}"
   case "${DUMP_PREFIX}" in
-    mysqldump) S3_NAME='mysqldump-*.sql.gz.gpg' ;;
-    redisdump) S3_NAME='redisdump-*.rdb.gz.gpg' ;;
-    *)         S3_NAME='pg_dump-*.pgdump.gz.gpg' ;;
+    mysqldump) S3_NAME="mysqldump-*.sql.gz.${ENC_EXT}" ;;
+    redisdump) S3_NAME="redisdump-*.rdb.gz.${ENC_EXT}" ;;
+    *)         S3_NAME="pg_dump-*.pgdump.gz.${ENC_EXT}" ;;
   esac
   log "finding latest ${S3_NAME} under ${PREFIX}/"
   # Newest by upload time (S3 LastModified), not by name.
@@ -68,9 +68,17 @@ else
     exit 1
   fi
 fi
+# An object of the other encryption method cannot be decrypted with this Restore's key.
+case "${ENCRYPTION_METHOD}:${SRC}" in
+  gpg:*.age|age:*.gpg)
+    log "ERROR: ${SRC} does not match spec.encryption.method ${ENCRYPTION_METHOD}" >&2
+    mark_failed
+    exit 1
+    ;;
+esac
 log "fetching ${SRC}"
-rclone copyto "${SRC}" "${WORKDIR}/dump.gz.gpg"
-log "fetched size=$(wc -c < "${WORKDIR}/dump.gz.gpg") bytes"
+rclone copyto "${SRC}" "${WORKDIR}/dump.gz.${ENC_EXT}"
+log "fetched size=$(wc -c < "${WORKDIR}/dump.gz.${ENC_EXT}") bytes"
 touch "${WORKDIR}/.step-fetch-done"
 log "wrote marker .step-fetch-done; stage work done"
 hold_until_job_done

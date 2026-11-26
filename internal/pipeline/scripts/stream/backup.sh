@@ -14,7 +14,7 @@ START=$(date +%s)
 RETAINED="${WORK_ROOT}/retained"
 find "${WORK_ROOT}" -mindepth 1 -maxdepth 1 -type d -name 'run-*' ! -path "${RUN_DIR}" -exec rm -rf {} + 2>/dev/null || true
 if [ -d "${RETAINED}" ]; then
-  find "${RETAINED}" -type f \( -name '*.gpg' -o -name '*.meta' \) -mtime "+${LOCAL_RETENTION_DAYS:-7}" -print -delete 2>/dev/null | while IFS= read -r f; do log "removed expired local ${f}"; done || true
+  find "${RETAINED}" -type f \( -name '*.gpg' -o -name '*.age' -o -name '*.meta' \) -mtime "+${LOCAL_RETENTION_DAYS:-7}" -print -delete 2>/dev/null | while IFS= read -r f; do log "removed expired local ${f}"; done || true
 fi
 if truthy "${LOG_FILE_ENABLED:-false}"; then
   find "${WORK_ROOT}/logs" -type f -name '*.log' -mtime "+${LOCAL_RETENTION_DAYS:-7}" -delete 2>/dev/null || true
@@ -26,7 +26,7 @@ case "${ENGINE}" in
     : "${PGHOST:?}" "${PGDATABASE:?}"
     export PGOPTIONS="${PGOPTIONS:+${PGOPTIONS} }-c statement_timeout=0 -c lock_timeout=0 -c idle_in_transaction_session_timeout=0"
     JOBS="${JOBS:-1}"
-    INCLUDE="pg_dump-*.gpg"
+    INCLUDE="pg_dump-*"
     src_ver="$(psql -X -At -c 'SHOW server_version' 2>/dev/null | cut -d' ' -f1 || true)"
     ts_ver="$(psql -X -At -c "SELECT extversion FROM pg_extension WHERE extname = 'timescaledb'" 2>/dev/null || true)"
     log "source ${PGHOST}:${PGPORT:-5432}/${PGDATABASE}: PostgreSQL ${src_ver:-?}, $(psql -X -At -c 'SELECT pg_size_pretty(pg_database_size(current_database()))' 2>/dev/null || echo '? size')${ts_ver:+, TimescaleDB ${ts_ver}}"
@@ -40,8 +40,8 @@ DUMP_STARTED_AT=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
       pg_extra+=(--exclude-table-data=_timescaledb_internal.bgw_job_stat --exclude-table-data=_timescaledb_internal.bgw_job_stat_history)
     fi
     if [ "${JOBS}" -gt 1 ]; then
-      # Parallel dump needs directory format: dump to scratch (compressed size), then tar | gpg | upload.
-      NAME="pg_dump-${PGDATABASE}-${TS}.dir.tar.gpg"
+      # Parallel dump needs directory format: dump to scratch (compressed size), then tar | encrypt | upload.
+      NAME="pg_dump-${PGDATABASE}-${TS}.dir.tar.${ENC_EXT}"
       dump() {
         local d="${RUN_DIR}/dump"
         log "pg_dump --format=directory --jobs=${JOBS} --compress=zstd:${LVL} → ${d}"
@@ -52,7 +52,7 @@ DUMP_STARTED_AT=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
         tar --create --file=- --directory="${d}" .
       }
     else
-      NAME="pg_dump-${PGDATABASE}-${TS}.dump.gpg"
+      NAME="pg_dump-${PGDATABASE}-${TS}.dump.${ENC_EXT}"
       dump() {
         # shellcheck disable=SC2086
         pg_dump --format=custom --compress="zstd:${LVL}" --no-password \
@@ -63,8 +63,8 @@ DUMP_STARTED_AT=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   mariadb)
     : "${MYSQL_HOST:?}" "${MYSQL_DATABASE:?}"
     export MYSQL_PWD="${MYSQL_PWD:-${MYSQL_PASSWORD:?MYSQL_PASSWORD required}}"
-    NAME="mysqldump-${MYSQL_DATABASE}-${TS}.sql.zst.gpg"
-    INCLUDE="mysqldump-*.gpg"
+    NAME="mysqldump-${MYSQL_DATABASE}-${TS}.sql.zst.${ENC_EXT}"
+    INCLUDE="mysqldump-*"
     dump() {
       # No --databases: the dump has no CREATE DATABASE / USE, so a Restore can load it into any database name.
       mariadb-dump --host="${MYSQL_HOST}" --port="${MYSQL_PORT:-3306}" --user="${MYSQL_USER}" \
@@ -85,8 +85,8 @@ DUMP_STARTED_AT=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
     if [ -n "${REDIS_USERNAME:-}" ] && [ "${REDIS_USERNAME}" != "default" ]; then
       user_args=(--user "${REDIS_USERNAME}")
     fi
-    NAME="redisdump-${REDIS_NAME:-redis}-${TS}.rdb.zst.gpg"
-    INCLUDE="redisdump-*.gpg"
+    NAME="redisdump-${REDIS_NAME:-redis}-${TS}.rdb.zst.${ENC_EXT}"
+    INCLUDE="redisdump-*"
     dump() {
       local ec=0
       redis-cli -h "${REDIS_HOST}" -p "${REDIS_PORT:-6379}" "${user_args[@]}" --rdb - 2> "${RUN_DIR}/redis-cli.err" || ec=$?
@@ -102,8 +102,8 @@ DUMP_STARTED_AT=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
     SRC="${PVC_SOURCE_DIR}${PVC_PATH:+/${PVC_PATH}}"
     [ -d "${SRC}" ] || die "source path ${SRC} is not a directory"
     printf '%s\n' "${PVC_EXCLUDES:-}" | sed '/^$/d' > "${RUN_DIR}/excludes"
-    NAME="pvcdump-${PVC_CLAIM_NAME}-${TS}.tar.zst.gpg"
-    INCLUDE="pvcdump-*.gpg"
+    NAME="pvcdump-${PVC_CLAIM_NAME}-${TS}.tar.zst.${ENC_EXT}"
+    INCLUDE="pvcdump-*"
     dump() {
       local ec=0
       # GNU tar exit 1 = files changed while read: the archive is still valid.
@@ -120,31 +120,34 @@ run_dump() {
   if declare -F dump_compressed > /dev/null; then dump_compressed; else dump; fi
 }
 
+# The .meta sidecar drops the encryption suffix (pg_dump-<db>-<ts>.dump.meta), the same for gpg and age.
+BASE="${NAME%."${ENC_EXT}"}"
+
 # 3. dump | encrypt | upload, as one pipe. rclone rcat streams a multipart upload; nothing touches the disk.
 if [ "${s3_enabled}" = true ]; then
   s3_init
   DEST="${S3_PREFIX}/${NAME}"
-  log "streaming ${ENGINE} dump → ${DEST} (zstd level ${LVL})"
+  log "streaming ${ENGINE} dump → ${DEST} (zstd level ${LVL}, ${ENCRYPTION_METHOD})"
   t=$(date +%s)
-  run_dump | gpg_encrypt | rclone rcat --s3-chunk-size "${RCLONE_S3_CHUNK_SIZE}" "${DEST}"
+  run_dump | encrypt_stream | rclone rcat --s3-chunk-size "${RCLONE_S3_CHUNK_SIZE}" "${DEST}"
   size="$(s3_size "${NAME}")"
   if [ -z "${size}" ] || [ "${size}" -eq 0 ]; then
     die "upload of ${NAME} not found after rcat"
   fi
   log "uploaded ${NAME} ($(human "${size}")) in $(elapsed "$t")"
   if [ -n "${META:-}" ]; then
-    printf '%s\n' "${META}" | rclone rcat "${S3_PREFIX}/${NAME%.gpg}.meta" || log "WARN: could not upload ${NAME%.gpg}.meta"
+    printf '%s\n' "${META}" | rclone rcat "${S3_PREFIX}/${BASE}.meta" || log "WARN: could not upload ${BASE}.meta"
   fi
-  # 4. S3 retention (best effort, never fails a backup that is already uploaded). The pattern also matches the .meta sidecars.
-  s3_prune "${INCLUDE%.gpg}"
+  # 4. S3 retention (best effort, never fails a backup that is already uploaded). The pattern matches .gpg and .age objects and the .meta sidecars.
+  s3_prune "${INCLUDE}"
 else
   mkdir -p "${RETAINED}"
   OUT="${RETAINED}/${NAME}"
-  log "streaming ${ENGINE} dump → ${OUT} (S3 disabled; zstd level ${LVL})"
+  log "streaming ${ENGINE} dump → ${OUT} (S3 disabled; zstd level ${LVL}, ${ENCRYPTION_METHOD})"
   t=$(date +%s)
-  run_dump | gpg_encrypt > "${OUT}.part"
+  run_dump | encrypt_stream > "${OUT}.part"
   mv "${OUT}.part" "${OUT}"
-  [ -z "${META:-}" ] || printf '%s\n' "${META}" > "${RETAINED}/${NAME%.gpg}.meta"
+  [ -z "${META:-}" ] || printf '%s\n' "${META}" > "${RETAINED}/${BASE}.meta"
   log "wrote ${OUT} ($(human "$(stat -c %s "${OUT}")")) in $(elapsed "$t")"
 fi
 log "backup done in $(elapsed "${START}")"

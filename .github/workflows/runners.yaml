@@ -1,5 +1,5 @@
 # Stream runner images, one per engine (runner/<engine>/). Built only when that folder or the shared rclone installer changes.
-# Tag = runner/<engine>/TAG, named after the tools inside: <client><version>-rclone<version>-r<revision> (e.g. pg18.7-rclone1.76.0-r1). A published tag is never overwritten: bump the versions or the -r revision with every Dockerfile change.
+# Tag = runner/<engine>/TAG, named after the tools inside: <client><version>-rclone<version>-r<revision> (e.g. pg18.7-rclone1.76.0-r2). A published tag is never overwritten: bump the versions or the -r revision with every Dockerfile change.
 name: Runners
 
 on:

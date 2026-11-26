@@ -1,6 +1,7 @@
 STAGE=restore
 # One container: pick the object → download | decrypt | decompress → load. Postgres custom/directory dumps load with pg_restore --jobs.
-# Also reads Stage-mode objects (*.gz.gpg plain SQL / RDB) so a Restore can switch modes without new backups.
+# Also reads Stage-mode objects (*.gz.gpg / *.gz.age plain SQL / RDB) so a Restore can switch modes without new backups.
+# Only objects of this Restore's encryption method (.gpg or .age, ENC_EXT) are picked.
 stream_init
 s3_init
 ENGINE="${ENGINE:-postgres}"
@@ -8,9 +9,9 @@ JOBS="${JOBS:-1}"
 START=$(date +%s)
 
 case "${ENGINE}" in
-  postgres) INCLUDE="pg_dump-*.gpg" ;;
-  mariadb) INCLUDE="mysqldump-*.gpg" ;;
-  redis) INCLUDE="redisdump-*.gpg" ;;
+  postgres) INCLUDE="pg_dump-*.${ENC_EXT}" ;;
+  mariadb) INCLUDE="mysqldump-*.${ENC_EXT}" ;;
+  redis) INCLUDE="redisdump-*.${ENC_EXT}" ;;
   *) die "restore is not supported for engine ${ENGINE}" ;;
 esac
 
@@ -31,11 +32,15 @@ if [ -z "${OBJ}" ]; then
   OBJ="$(s3_latest "${INCLUDE}")"
   [ -n "${OBJ}" ] || die "no ${INCLUDE} under ${S3_PREFIX}/"
 fi
+# An object of the other encryption method cannot be decrypted with this Restore's key.
+case "${ENCRYPTION_METHOD}:${OBJ}" in
+  gpg:*.age|age:*.gpg) die "${OBJ} does not match spec.encryption.method ${ENCRYPTION_METHOD} (expected *.${ENC_EXT})" ;;
+esac
 SRC="${S3_PREFIX}/${OBJ}"
 log "restoring ${SRC} ($(human "$(s3_size "${OBJ}")"))"
 
 fetch() {
-  rclone cat "${SRC}" | gpg_decrypt
+  rclone cat "${SRC}" | decrypt_stream
 }
 
 drop_allowed() { truthy "${DROP_DATABASE_IF_EXISTS:-false}"; }
@@ -51,7 +56,7 @@ restore_postgres() {
   done
 
   case "${OBJ}" in
-    *.dump.gpg|*.dir.tar.gpg) ;;
+    *.dump.gpg|*.dir.tar.gpg|*.dump.age|*.dir.tar.age) ;;
     *)
       # Stage-mode plain SQL: no pg_restore features. Stream it into psql after the same DB reset.
       reset_database "$db" "$owner"
@@ -65,7 +70,7 @@ restore_postgres() {
 
   # Custom (.dump) or directory (.dir.tar) format. pg_restore --jobs needs a seekable file, so the decrypted dump lands on scratch once.
   local dump
-  if [[ "${OBJ}" == *.dir.tar.gpg ]]; then
+  if [[ "${OBJ}" == *.dir.tar.gpg || "${OBJ}" == *.dir.tar.age ]]; then
     dump="${RUN_DIR}/dump"
     mkdir -p "${dump}"
     log "download | decrypt | untar → ${dump}"
@@ -79,7 +84,7 @@ restore_postgres() {
 
   # TimescaleDB: install the source's extension version, load in restore mode, then update.
   local meta ts_ver=""
-  meta="$(rclone cat "${S3_PREFIX}/${OBJ%.gpg}.meta" 2>/dev/null || true)"
+  meta="$(rclone cat "${S3_PREFIX}/${OBJ%."${ENC_EXT}"}.meta" 2>/dev/null || true)"
   ts_ver="$(printf '%s\n' "$meta" | sed -n 's/^SRC_TS_VERSION=//p')"
   pg_restore --list "${dump}" > "${RUN_DIR}/toc.all"
   if [ -z "${ts_ver}" ] && grep -qE ' EXTENSION - "?timescaledb"?( |$)' "${RUN_DIR}/toc.all"; then

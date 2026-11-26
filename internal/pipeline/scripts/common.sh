@@ -1,5 +1,13 @@
 # Shared pipeline helpers. Callers set STAGE and DATA_DIR (backup) or WORKDIR
 # (restore), then pipeline_init.
+
+# spec.encryption.method: gpg (default, symmetric) or age (X25519 public key).
+# Encrypted objects end in .gpg or .age (ENC_EXT).
+ENCRYPTION_METHOD="${ENCRYPTION_METHOD:-gpg}"
+case "${ENCRYPTION_METHOD}" in
+  gpg|age) ENC_EXT="${ENCRYPTION_METHOD}" ;;
+  *) echo "ERROR: unknown ENCRYPTION_METHOD ${ENCRYPTION_METHOD} (gpg or age)" >&2; exit 1 ;;
+esac
 log_file_enabled() {
   case "${LOG_FILE_ENABLED:-false}" in
     1|yes|YES|true|TRUE) return 0 ;;

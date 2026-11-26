@@ -79,10 +79,15 @@ type BackupSpec struct {
 	// in retained/ on the PVC (no s3-sync; S3 keys and endpoint/bucket not required).
 	S3 S3Spec `json:"s3"`
 
-	// SecretRef is a Secret in the same namespace with keys: gpg_passphrase;
-	// username and password (not for engine pvc); and (when s3.enabled)
-	// s3_access_key, s3_secret_key.
+	// SecretRef is a Secret in the same namespace with keys: gpg_passphrase
+	// (encryption method gpg) or age_recipient (method age); username and
+	// password (not for engine pvc); and (when s3.enabled) s3_access_key,
+	// s3_secret_key.
 	SecretRef corev1.LocalObjectReference `json:"secretRef"`
+
+	// Encryption selects gpg (default, symmetric passphrase) or age (public
+	// key: the Backup holds only age_recipient).
+	Encryption *EncryptionSpec `json:"encryption,omitempty"`
 
 	// Persistence for dump scratch + retained/. Default: PVC enabled, 1Gi.
 	Persistence *PersistenceSpec `json:"persistence,omitempty"`
@@ -176,7 +181,7 @@ type BackupStatus struct {
 // +kubebuilder:printcolumn:name="Last Job",type=string,JSONPath=".status.lastJob.outcome"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 
-// Backup describes a scheduled backup pipeline (database dump or PVC tar → gzip → gpg → optional S3).
+// Backup describes a scheduled backup pipeline (database dump or PVC tar → gzip → gpg or age → optional S3).
 type Backup struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

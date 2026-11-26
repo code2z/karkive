@@ -8,7 +8,7 @@ DATA_DIR="${DATA_ROOT}/${HOSTNAME}"
 pipeline_init
 wait_for "${DATA_DIR}/.step-compress-done" "compress"
 already_done_hold "${DATA_DIR}/.step-encrypt-done" "encrypt"
-log "stage start: encrypt"
+log "stage start: encrypt method=${ENCRYPTION_METHOD}"
 DUMP_PREFIX="${DUMP_PREFIX:-pg_dump}"
 case "${DUMP_PREFIX}" in
   mysqldump) GZ_GLOB='mysqldump-*.sql.gz' ;;
@@ -21,21 +21,36 @@ ls "${DATA_DIR}"/${GZ_GLOB} >/dev/null 2>&1 || {
   mark_failed
   exit 1
 }
-export GNUPGHOME="/tmp/gpg-home"
-mkdir -p "$GNUPGHOME" && chmod 700 "$GNUPGHOME"
+if [ "${ENCRYPTION_METHOD}" = age ]; then
+  # Public key(s) only: this Backup cannot decrypt what it writes.
+  AGE_RECIPIENTS_FILE="${AGE_RECIPIENTS_FILE:-/run/secrets/age/age_recipient}"
+  if [ ! -s "${AGE_RECIPIENTS_FILE}" ]; then
+    log "ERROR: age recipients file ${AGE_RECIPIENTS_FILE} is missing or empty" >&2
+    mark_failed
+    exit 1
+  fi
+else
+  export GNUPGHOME="/tmp/gpg-home"
+  mkdir -p "$GNUPGHOME" && chmod 700 "$GNUPGHOME"
+fi
 found=0
 for f in "${DATA_DIR}"/${GZ_GLOB}; do
   [ -f "$f" ] || continue
   found=1
-  log "gpg encrypt ${f} ($(wc -c < "$f") bytes)"
-  gpg --batch --yes --symmetric --cipher-algo AES256 \
-      --passphrase-file /run/secrets/gpg/gpg_passphrase \
-      --output "${f}.gpg" "$f"
+  out="${f}.${ENC_EXT}"
+  log "${ENCRYPTION_METHOD} encrypt ${f} ($(wc -c < "$f") bytes)"
+  if [ "${ENCRYPTION_METHOD}" = age ]; then
+    age --encrypt --recipients-file "${AGE_RECIPIENTS_FILE}" --output "${out}" "$f"
+  else
+    gpg --batch --yes --symmetric --cipher-algo AES256 \
+        --passphrase-file /run/secrets/gpg/gpg_passphrase \
+        --output "${out}" "$f"
+  fi
   rm "$f"
-  log "gpg done -> ${f}.gpg ($(wc -c < "${f}.gpg") bytes); removed plaintext gz"
+  log "${ENCRYPTION_METHOD} done -> ${out} ($(wc -c < "${out}") bytes); removed plaintext gz"
   mkdir -p "${DATA_ROOT}/retained"
-  cp -f "${f}.gpg" "${DATA_ROOT}/retained/"
-  log "kept local copy ${DATA_ROOT}/retained/$(basename "${f}.gpg") (LOCAL_RETENTION_DAYS=${LOCAL_RETENTION_DAYS:-7})"
+  cp -f "${out}" "${DATA_ROOT}/retained/"
+  log "kept local copy ${DATA_ROOT}/retained/$(basename "${out}") (LOCAL_RETENTION_DAYS=${LOCAL_RETENTION_DAYS:-7})"
 done
 if [ "$found" -eq 0 ]; then
   log "ERROR: no ${GZ_GLOB} files to encrypt" >&2

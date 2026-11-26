@@ -43,16 +43,19 @@ defaults:
   busyboxImage: docker.io/library/busybox:1.37
   # encrypt (gpg)
   gnupgImage: docker.io/vladgh/gpg:1.3.11
+  # Stage-mode encrypt/decrypt with spec.encryption.method age (needs /bin/sh and age; the gpg image has no age).
+  # Defaults to the pvc runner image, which ships age.
+  ageImage: ghcr.io/mahdidarabi/karkive-runner-pvc:trixie-rclone1.76.0-r2
   # pg_dump / psql (backup + restore)
   postgresImage: docker.io/cloudnative-pg/postgresql:18.4
   # Stage-mode s3-sync and fetch (replaces minio/mc since 0.2.0)
   rcloneImage: docker.io/rclone/rclone:1.76.0
-  # Single container of spec.pipeline.mode Stream, one image per engine (runner/<engine>/ in the repo; client tools + zstd + gpg + rclone)
+  # Single container of spec.pipeline.mode Stream, one image per engine (runner/<engine>/ in the repo; client tools + zstd + gpg + age + rclone)
   runnerImages:
-    postgres: ghcr.io/mahdidarabi/karkive-runner-postgres:pg18.7-rclone1.76.0-r1
-    mariadb: ghcr.io/mahdidarabi/karkive-runner-mariadb:mariadb10.6.23-rclone1.76.0-r1
-    redis: ghcr.io/mahdidarabi/karkive-runner-redis:redis7.4.12-rclone1.76.0-r1
-    pvc: ghcr.io/mahdidarabi/karkive-runner-pvc:trixie-rclone1.76.0-r1
+    postgres: ghcr.io/mahdidarabi/karkive-runner-postgres:pg18.7-rclone1.76.0-r2
+    mariadb: ghcr.io/mahdidarabi/karkive-runner-mariadb:mariadb10.6.23-rclone1.76.0-r2
+    redis: ghcr.io/mahdidarabi/karkive-runner-redis:redis7.4.12-rclone1.76.0-r2
+    pvc: ghcr.io/mahdidarabi/karkive-runner-pvc:trixie-rclone1.76.0-r2
   mariadbImage: docker.io/library/mariadb:10.6
   redisImage: docker.io/library/redis:7.4
   # GNU tar for engine pvc (pvcdump)

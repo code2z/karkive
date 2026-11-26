@@ -21,14 +21,15 @@ else
 fi
 DUMP_PREFIX="${DUMP_PREFIX:-pg_dump}"
 case "${DUMP_PREFIX}" in
-  mysqldump) S3_NAME='mysqldump-*.sql.gz.gpg' ;;
-  redisdump) S3_NAME='redisdump-*.rdb.gz.gpg' ;;
-  pvcdump)   S3_NAME='pvcdump-*.tar.gz.gpg' ;;
-  *)         S3_NAME='pg_dump-*.pgdump.gz.gpg' ;;
+  mysqldump) S3_NAME='mysqldump-*.sql.gz' ;;
+  redisdump) S3_NAME='redisdump-*.rdb.gz' ;;
+  pvcdump)   S3_NAME='pvcdump-*.tar.gz' ;;
+  *)         S3_NAME='pg_dump-*.pgdump.gz' ;;
 esac
-log "upload finished; pruning S3 objects older than ${S3_OLDER_THAN} name=${S3_NAME} (days=${S3_RETENTION_DAYS:-n/a} hours=${S3_RETENTION_HOURS:-n/a})"
+log "upload finished; pruning S3 objects older than ${S3_OLDER_THAN} name=${S3_NAME}.{gpg,age} (days=${S3_RETENTION_DAYS:-n/a} hours=${S3_RETENTION_HOURS:-n/a})"
 # Pruning is best effort: the new dump is already uploaded, so a failed delete must not fail the Job (and re-run the whole dump). rclone retries each delete; anything left is picked up by the next run.
-rclone delete --include "${S3_NAME}" --min-age "${S3_OLDER_THAN}" -v "${S3_PREFIX}/" 2>&1 \
+# Both encryptions age out, so switching spec.encryption.method still prunes the older objects.
+rclone delete --include "${S3_NAME}.gpg" --include "${S3_NAME}.age" --min-age "${S3_OLDER_THAN}" -v "${S3_PREFIX}/" 2>&1 \
   | while IFS= read -r line; do log "rclone: ${line}"; done || true
 touch "${DATA_DIR}/.step-job-done"
 log "wrote marker .step-job-done; releasing sibling containers; stage done"

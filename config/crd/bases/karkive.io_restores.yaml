@@ -103,6 +103,26 @@ spec:
                 description: DropDatabaseIfExists drops a non-empty target before
                   restore. Default true.
                 type: boolean
+              encryption:
+                description: |-
+                  Encryption must match the Backup that wrote the objects: gpg (default)
+                  or age (the Restore holds the private key age_identity). A Restore picks
+                  only objects of its method (.gpg or .age).
+                properties:
+                  method:
+                    default: gpg
+                    description: |-
+                      Method is gpg (default, symmetric, Secret key gpg_passphrase) or age
+                      (public key). With age a Backup reads age_recipient (one or more age1...
+                      public keys, one per line) and a Restore reads age_identity (the
+                      AGE-SECRET-KEY-1... private key) from spec.secretRef; gpg_passphrase is
+                      then not required. age objects end in .age instead of .gpg, and a Restore
+                      only picks objects of its own method.
+                    enum:
+                    - gpg
+                    - age
+                    type: string
+                type: object
               engine:
                 default: postgres
                 description: Engine of the restore target.
@@ -115,6 +135,17 @@ spec:
               images:
                 description: Images overrides operator-wide default images.
                 properties:
+                  age:
+                    description: Age is used for encrypt and decrypt with encryption
+                      method age (Stage mode). It needs /bin/sh and age.
+                    properties:
+                      image:
+                        description: Image is registry/repository:tag.
+                        type: string
+                      pullPolicy:
+                        description: PullPolicy for the container. Default IfNotPresent.
+                        type: string
+                    type: object
                   busybox:
                     description: BusyBox is used for cleanup, compress, and extract
                       (find, gzip).
@@ -127,7 +158,8 @@ spec:
                         type: string
                     type: object
                   gnupg:
-                    description: GnuPG is used for encrypt and decrypt.
+                    description: GnuPG is used for encrypt and decrypt with encryption
+                      method gpg (Stage mode).
                     properties:
                       image:
                         description: Image is registry/repository:tag.
@@ -192,7 +224,7 @@ spec:
                     description: Runner is the single container of pipeline mode Stream;
                       the default is the per-engine karkive-runner-<engine> image.
                       It needs bash, the engine's client tools (pg_dump/pg_restore,
-                      mariadb-dump, redis-cli, or GNU tar), zstd, gpg, and rclone.
+                      mariadb-dump, redis-cli, or GNU tar), zstd, gpg, age, and rclone.
                     properties:
                       image:
                         description: Image is registry/repository:tag.
@@ -335,7 +367,7 @@ spec:
                     default: Stage
                     description: |-
                       Mode is Stage (default) or Stream.
-                      Stream objects are named *.dump.gpg / *.dir.tar.gpg (postgres) and *.zst.gpg (other engines). A Stream Restore also reads Stage objects (*.gz.gpg); a Stage Restore reads only Stage objects.
+                      Stream objects are named *.dump.gpg / *.dir.tar.gpg (postgres) and *.zst.gpg (other engines); with encryption method age the suffix is .age instead of .gpg. A Stream Restore also reads Stage objects (*.gz.gpg / *.gz.age); a Stage Restore reads only Stage objects.
                     enum:
                     - Stage
                     - Stream
@@ -817,7 +849,8 @@ spec:
                 type: string
               secretRef:
                 description: |-
-                  SecretRef holds s3_access_key, s3_secret_key, gpg_passphrase.
+                  SecretRef holds s3_access_key, s3_secret_key, and gpg_passphrase
+                  (encryption method gpg) or age_identity (method age).
                   Target DB credentials come from postgresSecret / mariadbSecret / redisSecret.
                 properties:
                   name:

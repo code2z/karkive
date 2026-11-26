@@ -211,7 +211,7 @@ func TestBackupStagesKnowPVCDumpPrefix(t *testing.T) {
 		"cleanup.sh":  "pvcdump-*.tar.gz.gpg",
 		"compress.sh": "pvcdump-*.tar'",
 		"encrypt.sh":  "pvcdump-*.tar.gz'",
-		"s3-sync.sh":  "pvcdump-*.tar.gz.gpg",
+		"s3-sync.sh":  "pvcdump-*.tar.gz'",
 	} {
 		s, err := BackupScript(name)
 		if err != nil {
@@ -252,7 +252,7 @@ func TestStreamScripts(t *testing.T) {
 			"stream_init",
 			"--format=custom --compress=\"zstd:${LVL}\"",
 			"--format=directory --jobs=",
-			"run_dump | gpg_encrypt | rclone rcat",
+			"run_dump | encrypt_stream | rclone rcat",
 			"s3_prune",
 			"--cipher-algo AES256 --compress-algo none",
 		},
@@ -272,6 +272,133 @@ func TestStreamScripts(t *testing.T) {
 			if !strings.Contains(s, want) {
 				t.Errorf("stream %s missing %q", name, want)
 			}
+		}
+	}
+}
+
+func TestEncryptionMethodDefaultsToGPG(t *testing.T) {
+	c := CommonScript()
+	for _, want := range []string{`ENCRYPTION_METHOD="${ENCRYPTION_METHOD:-gpg}"`, `ENC_EXT="${ENCRYPTION_METHOD}"`} {
+		if !strings.Contains(c, want) {
+			t.Errorf("common.sh missing %q", want)
+		}
+	}
+	s, err := StreamScript("backup.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(s, `ENCRYPTION_METHOD="${ENCRYPTION_METHOD:-gpg}"`) {
+		t.Error("stream common.sh must default ENCRYPTION_METHOD to gpg")
+	}
+}
+
+func TestStageScriptsSupportAge(t *testing.T) {
+	enc, err := BackupScript("encrypt.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		// gpg path unchanged
+		"gpg --batch --yes --symmetric --cipher-algo AES256",
+		"/run/secrets/gpg/gpg_passphrase",
+		// age path: public key only
+		`age --encrypt --recipients-file "${AGE_RECIPIENTS_FILE}"`,
+		"/run/secrets/age/age_recipient",
+		`out="${f}.${ENC_EXT}"`,
+	} {
+		if !strings.Contains(enc, want) {
+			t.Errorf("encrypt.sh missing %q", want)
+		}
+	}
+	dec, err := RestoreScript("decrypt.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"gpg --batch --yes --decrypt",
+		`age --decrypt --identity "${AGE_IDENTITY_FILE}"`,
+		"/run/secrets/age/age_identity",
+		`IN="${WORKDIR}/dump.gz.${ENC_EXT}"`,
+	} {
+		if !strings.Contains(dec, want) {
+			t.Errorf("decrypt.sh missing %q", want)
+		}
+	}
+	fetch, err := RestoreScript("fetch.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`S3_NAME="pg_dump-*.pgdump.gz.${ENC_EXT}"`,
+		`S3_NAME="mysqldump-*.sql.gz.${ENC_EXT}"`,
+		`S3_NAME="redisdump-*.rdb.gz.${ENC_EXT}"`,
+		"gpg:*.age|age:*.gpg",
+		`"${WORKDIR}/dump.gz.${ENC_EXT}"`,
+	} {
+		if !strings.Contains(fetch, want) {
+			t.Errorf("fetch.sh missing %q", want)
+		}
+	}
+	// Retention prunes both suffixes, so switching methods still ages out older dumps.
+	for name, wants := range map[string][]string{
+		"cleanup.sh": {`-name "${RETAINED_GLOB}.gpg" -o -name "${RETAINED_GLOB}.age"`, "'pvcdump-*.tar.gz.age'"},
+		"s3-sync.sh": {`--include "${S3_NAME}.gpg" --include "${S3_NAME}.age"`},
+	} {
+		s, err := BackupScript(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range wants {
+			if !strings.Contains(s, want) {
+				t.Errorf("%s missing %q", name, want)
+			}
+		}
+	}
+}
+
+func TestStreamScriptsSupportAge(t *testing.T) {
+	b, err := StreamScript("backup.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`age --encrypt --recipients-file "${AGE_RECIPIENTS_FILE}"`,
+		"--symmetric --cipher-algo AES256 --compress-algo none",
+		`NAME="pg_dump-${PGDATABASE}-${TS}.dump.${ENC_EXT}"`,
+		`NAME="pg_dump-${PGDATABASE}-${TS}.dir.tar.${ENC_EXT}"`,
+		`NAME="mysqldump-${MYSQL_DATABASE}-${TS}.sql.zst.${ENC_EXT}"`,
+		`NAME="redisdump-${REDIS_NAME:-redis}-${TS}.rdb.zst.${ENC_EXT}"`,
+		`NAME="pvcdump-${PVC_CLAIM_NAME}-${TS}.tar.zst.${ENC_EXT}"`,
+		`BASE="${NAME%."${ENC_EXT}"}"`,
+		`"${S3_PREFIX}/${BASE}.meta"`,
+		`s3_prune "${INCLUDE}"`,
+		"-name '*.age'",
+	} {
+		if !strings.Contains(b, want) {
+			t.Errorf("stream backup.sh missing %q", want)
+		}
+	}
+	if strings.Contains(b, "gpg_encrypt") {
+		t.Error("stream backup.sh still calls gpg_encrypt directly")
+	}
+	r, err := StreamScript("restore.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`age --decrypt --identity "${AGE_IDENTITY_FILE}"`,
+		`rclone cat "${SRC}" | decrypt_stream`,
+		`INCLUDE="pg_dump-*.${ENC_EXT}"`,
+		`INCLUDE="mysqldump-*.${ENC_EXT}"`,
+		`INCLUDE="redisdump-*.${ENC_EXT}"`,
+		"*.dump.age|*.dir.tar.age",
+		`${OBJ%."${ENC_EXT}"}.meta`,
+		"*.zst.gpg|*.zst.age",
+		"*.gz.gpg|*.gz.age",
+		"gpg:*.age|age:*.gpg",
+	} {
+		if !strings.Contains(r, want) {
+			t.Errorf("stream restore.sh missing %q", want)
 		}
 	}
 }

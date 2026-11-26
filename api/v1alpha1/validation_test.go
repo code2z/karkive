@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -193,3 +194,33 @@ func TestValidatePipeline(t *testing.T) {
 }
 
 func ptrInt32(v int32) *int32 { return &v }
+
+func TestValidateEncryption(t *testing.T) {
+	b := BackupSpec{Schedule: "0 2 * * *", Database: DatabaseSpec{Host: "h", Name: "d"}, S3: S3Spec{Path: "p"}, SecretRef: corev1.LocalObjectReference{Name: "s"}}
+	r := RestoreSpec{Schedule: "0 2 * * *", Database: DatabaseSpec{Host: "h", Name: "d"}, S3: S3Spec{Path: "p"}, SecretRef: corev1.LocalObjectReference{Name: "s"}, PostgresSecret: &SecretKeySelector{Name: "pg"}}
+	for _, enc := range []*EncryptionSpec{nil, {}, {Method: EncryptionMethodGPG}, {Method: EncryptionMethodAge}} {
+		b.Encryption, r.Encryption = enc, enc
+		if err := ValidateBackupSpec(b); err != nil {
+			t.Errorf("backup encryption %v: %v", enc, err)
+		}
+		if err := ValidateRestoreSpec(r); err != nil {
+			t.Errorf("restore encryption %v: %v", enc, err)
+		}
+	}
+	for _, m := range []EncryptionMethod{"pgp", "AGE", "none"} {
+		b.Encryption = &EncryptionSpec{Method: m}
+		r.Encryption = &EncryptionSpec{Method: m}
+		if err := ValidateBackupSpec(b); err == nil || !strings.Contains(err.Error(), "spec.encryption.method") {
+			t.Errorf("backup method %q: err=%v", m, err)
+		}
+		if err := ValidateRestoreSpec(r); err == nil || !strings.Contains(err.Error(), "spec.encryption.method") {
+			t.Errorf("restore method %q: err=%v", m, err)
+		}
+	}
+	// age with engine pvc backup and Stream mode.
+	pvc := BackupSpec{Engine: EnginePVC, Schedule: "0 2 * * *", PVC: &PVCSourceSpec{ClaimName: "data"}, S3: S3Spec{Path: "p"}, SecretRef: corev1.LocalObjectReference{Name: "s"},
+		Encryption: &EncryptionSpec{Method: EncryptionMethodAge}, Pipeline: &PipelineSpec{Mode: PipelineModeStream}}
+	if err := ValidateBackupSpec(pvc); err != nil {
+		t.Errorf("pvc age stream: %v", err)
+	}
+}

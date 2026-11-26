@@ -25,7 +25,6 @@ import (
 var requiredRestoreSecretKeys = []string{
 	"s3_access_key",
 	"s3_secret_key",
-	"gpg_passphrase",
 }
 
 // RestoreReconciler reconciles a Restore object into ConfigMap + optional PVC + CronJob.
@@ -169,7 +168,9 @@ func (r *RestoreReconciler) ensureJobSecret(ctx context.Context, restore *karkiv
 	if err := r.Get(ctx, key, secret); err != nil {
 		return err
 	}
-	for _, k := range requiredRestoreSecretKeys {
+	// Decryption key: gpg_passphrase (gpg, default) or age_identity (age private key).
+	required := append(append([]string{}, requiredRestoreSecretKeys...), resources.RestoreEncryptionSecretKey(restore))
+	for _, k := range required {
 		if _, ok := secret.Data[k]; !ok {
 			return fmt.Errorf("secret %q is missing key %q", secret.Name, k)
 		}

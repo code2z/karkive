@@ -37,7 +37,7 @@ func streamBackupContainer(backup *karkivev1alpha1.Backup, cfg config.Config, cm
 		VolumeMounts: []corev1.VolumeMount{
 			{Name: volumeDataDir, MountPath: config.DefaultStreamWorkDir},
 			{Name: volumeTmp, MountPath: mountTmp, SubPath: "stream-tmp"},
-			{Name: volumeGPG, MountPath: mountGPG, ReadOnly: true},
+			encryptionVolumeMount(backup.Spec.Encryption),
 		},
 	}
 	switch EffectiveEngine(backup.Spec.Engine) {
@@ -72,7 +72,7 @@ func streamRestoreContainer(restore *karkivev1alpha1.Restore, cfg config.Config,
 		VolumeMounts: []corev1.VolumeMount{
 			{Name: volumeWorkdir, MountPath: workdir},
 			{Name: volumeTmp, MountPath: mountTmp, SubPath: "stream-tmp"},
-			{Name: volumeGPG, MountPath: mountGPG, ReadOnly: true},
+			encryptionVolumeMount(restore.Spec.Encryption),
 		},
 		Env: []corev1.EnvVar{
 			secretEnv("S3_ACCESS_KEY", secret, "s3_access_key"),
@@ -109,23 +109,33 @@ func streamBackupSecurityContext(backup *karkivev1alpha1.Backup) *corev1.Securit
 
 // streamBackupEnv is merged into the Backup ConfigMap in Stream mode.
 func streamBackupEnv(backup *karkivev1alpha1.Backup) map[string]string {
-	return map[string]string{
+	env := map[string]string{
 		"PIPELINE_MODE":     string(karkivev1alpha1.PipelineModeStream),
 		"HOME":              mountTmp,
 		"WORK_ROOT":         config.DefaultStreamWorkDir,
-		"GPG_PASSFILE":      mountGPG + "/gpg_passphrase",
 		"JOBS":              strconv.Itoa(int(pipelineJobs(backup.Spec.Pipeline, config.DefaultStreamBackupJobs))),
 		"COMPRESSION_LEVEL": strconv.Itoa(int(compressionLevel(backup.Spec.Pipeline))),
 	}
+	if backup.Spec.Encryption.IsAge() {
+		env["AGE_RECIPIENTS_FILE"] = mountAge + "/" + SecretKeyAgeRecipient
+	} else {
+		env["GPG_PASSFILE"] = mountGPG + "/" + SecretKeyGPGPassphrase
+	}
+	return env
 }
 
 // streamRestoreEnv is merged into the Restore ConfigMap in Stream mode.
 func streamRestoreEnv(restore *karkivev1alpha1.Restore) map[string]string {
-	return map[string]string{
+	env := map[string]string{
 		"PIPELINE_MODE": string(karkivev1alpha1.PipelineModeStream),
 		"HOME":          mountTmp,
 		"WORK_ROOT":     restoreWorkdir(restore),
-		"GPG_PASSFILE":  mountGPG + "/gpg_passphrase",
 		"JOBS":          strconv.Itoa(int(pipelineJobs(restore.Spec.Pipeline, config.DefaultStreamRestoreJobs))),
 	}
+	if restore.Spec.Encryption.IsAge() {
+		env["AGE_IDENTITY_FILE"] = mountAge + "/" + SecretKeyAgeIdentity
+	} else {
+		env["GPG_PASSFILE"] = mountGPG + "/" + SecretKeyGPGPassphrase
+	}
+	return env
 }

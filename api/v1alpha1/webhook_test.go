@@ -32,3 +32,40 @@ func TestRestoreWebhookRejectsWrongType(t *testing.T) {
 		t.Fatal("expected type error")
 	}
 }
+
+func TestWebhooksRejectUnknownEncryptionMethod(t *testing.T) {
+	backup := &Backup{Spec: BackupSpec{
+		Schedule:   "0 2 * * *",
+		Database:   DatabaseSpec{Host: "h", Name: "app"},
+		S3:         S3Spec{Path: "app/pgdump"},
+		SecretRef:  corev1.LocalObjectReference{Name: "creds"},
+		Encryption: &EncryptionSpec{Method: "rot13"},
+	}}
+	bv := &BackupCustomValidator{}
+	if _, err := bv.ValidateCreate(context.Background(), backup); err == nil {
+		t.Fatal("backup: expected reject")
+	}
+	if _, err := bv.ValidateUpdate(context.Background(), backup, backup); err == nil {
+		t.Fatal("backup update: expected reject")
+	}
+	backup.Spec.Encryption.Method = EncryptionMethodAge
+	if _, err := bv.ValidateCreate(context.Background(), backup); err != nil {
+		t.Fatal(err)
+	}
+	restore := &Restore{Spec: RestoreSpec{
+		Schedule:       "0 2 * * *",
+		Database:       DatabaseSpec{Host: "h", Name: "app"},
+		S3:             S3Spec{Path: "app/pgdump"},
+		SecretRef:      corev1.LocalObjectReference{Name: "creds"},
+		PostgresSecret: &SecretKeySelector{Name: "pg"},
+		Encryption:     &EncryptionSpec{Method: "rot13"},
+	}}
+	rv := &RestoreCustomValidator{}
+	if _, err := rv.ValidateCreate(context.Background(), restore); err == nil {
+		t.Fatal("restore: expected reject")
+	}
+	restore.Spec.Encryption.Method = EncryptionMethodAge
+	if _, err := rv.ValidateCreate(context.Background(), restore); err != nil {
+		t.Fatal(err)
+	}
+}

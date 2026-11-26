@@ -46,6 +46,9 @@ func ValidateBackupSpec(spec BackupSpec) error {
 	if err := validateRuntime(spec.Runtime, spec.Persistence); err != nil {
 		return err
 	}
+	if err := validateEncryption(spec.Encryption); err != nil {
+		return err
+	}
 	return validatePipeline(spec.Pipeline)
 }
 
@@ -92,7 +95,19 @@ func ValidateRestoreSpec(spec RestoreSpec) error {
 	if err := validateRuntime(spec.Runtime, spec.Persistence); err != nil {
 		return err
 	}
+	if err := validateEncryption(spec.Encryption); err != nil {
+		return err
+	}
 	return validatePipeline(spec.Pipeline)
+}
+
+func validateEncryption(e *EncryptionSpec) error {
+	switch m := e.EffectiveMethod(); m {
+	case EncryptionMethodGPG, EncryptionMethodAge:
+		return nil
+	default:
+		return fmt.Errorf("spec.encryption.method %q is invalid; must be gpg or age", m)
+	}
 }
 
 func validatePipeline(p *PipelineSpec) error {

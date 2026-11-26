@@ -54,6 +54,10 @@ func MutateBackupConfigMap(cm *corev1.ConfigMap, backup *karkivev1alpha1.Backup,
 		cm.Data["PGDATABASE"] = backup.Spec.Database.Name
 	}
 
+	for k, v := range encryptionEnv(backup.Spec.Encryption) {
+		cm.Data[k] = v
+	}
+
 	if IsStreamBackup(backup) {
 		for k, v := range streamBackupEnv(backup) {
 			cm.Data[k] = v

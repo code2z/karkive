@@ -107,8 +107,10 @@ type ImageSpec struct {
 type ImageSet struct {
 	// BusyBox is used for cleanup, compress, and extract (find, gzip).
 	BusyBox *ImageSpec `json:"busybox,omitempty"`
-	// GnuPG is used for encrypt and decrypt.
+	// GnuPG is used for encrypt and decrypt with encryption method gpg (Stage mode).
 	GnuPG *ImageSpec `json:"gnupg,omitempty"`
+	// Age is used for encrypt and decrypt with encryption method age (Stage mode). It needs /bin/sh and age.
+	Age *ImageSpec `json:"age,omitempty"`
 	// Postgres is used for pg_dump / pg_restore / psql.
 	Postgres *ImageSpec `json:"postgres,omitempty"`
 	// Mc is deprecated and ignored since 0.2.0: Stage mode uses Rclone for s3-sync and fetch.
@@ -121,8 +123,49 @@ type ImageSet struct {
 	Redis *ImageSpec `json:"redis,omitempty"`
 	// Tar must provide GNU tar; used by the pvcdump stage (engine pvc).
 	Tar *ImageSpec `json:"tar,omitempty"`
-	// Runner is the single container of pipeline mode Stream; the default is the per-engine karkive-runner-<engine> image. It needs bash, the engine's client tools (pg_dump/pg_restore, mariadb-dump, redis-cli, or GNU tar), zstd, gpg, and rclone.
+	// Runner is the single container of pipeline mode Stream; the default is the per-engine karkive-runner-<engine> image. It needs bash, the engine's client tools (pg_dump/pg_restore, mariadb-dump, redis-cli, or GNU tar), zstd, gpg, age, and rclone.
 	Runner *ImageSpec `json:"runner,omitempty"`
+}
+
+// EncryptionMethod selects how dumps are encrypted at rest.
+// +kubebuilder:validation:Enum=gpg;age
+type EncryptionMethod string
+
+const (
+	// EncryptionMethodGPG is symmetric gpg (AES256) with the gpg_passphrase Secret key. Objects end in .gpg. Default.
+	EncryptionMethodGPG EncryptionMethod = "gpg"
+	// EncryptionMethodAge is age (X25519). A Backup encrypts to the public key(s) in age_recipient; a Restore decrypts with the private key in age_identity. Objects end in .age.
+	EncryptionMethodAge EncryptionMethod = "age"
+)
+
+// EncryptionSpec selects the encryption of dumps and archives.
+type EncryptionSpec struct {
+	// Method is gpg (default, symmetric, Secret key gpg_passphrase) or age
+	// (public key). With age a Backup reads age_recipient (one or more age1...
+	// public keys, one per line) and a Restore reads age_identity (the
+	// AGE-SECRET-KEY-1... private key) from spec.secretRef; gpg_passphrase is
+	// then not required. age objects end in .age instead of .gpg, and a Restore
+	// only picks objects of its own method.
+	// +kubebuilder:default=gpg
+	Method EncryptionMethod `json:"method,omitempty"`
+}
+
+// EffectiveMethod is gpg when the spec or its method is unset.
+func (e *EncryptionSpec) EffectiveMethod() EncryptionMethod {
+	if e == nil || e.Method == "" {
+		return EncryptionMethodGPG
+	}
+	return e.Method
+}
+
+// IsAge is true for encryption method age.
+func (e *EncryptionSpec) IsAge() bool {
+	return e.EffectiveMethod() == EncryptionMethodAge
+}
+
+// Extension is the object suffix of the method without the dot: gpg or age.
+func (e *EncryptionSpec) Extension() string {
+	return string(e.EffectiveMethod())
 }
 
 // PipelineMode selects how the pipeline runs inside the Job pod.
@@ -139,7 +182,7 @@ const (
 // PipelineSpec tunes the pipeline. All fields are optional.
 type PipelineSpec struct {
 	// Mode is Stage (default) or Stream.
-	// Stream objects are named *.dump.gpg / *.dir.tar.gpg (postgres) and *.zst.gpg (other engines). A Stream Restore also reads Stage objects (*.gz.gpg); a Stage Restore reads only Stage objects.
+	// Stream objects are named *.dump.gpg / *.dir.tar.gpg (postgres) and *.zst.gpg (other engines); with encryption method age the suffix is .age instead of .gpg. A Stream Restore also reads Stage objects (*.gz.gpg / *.gz.age); a Stage Restore reads only Stage objects.
 	// +kubebuilder:default=Stage
 	Mode PipelineMode `json:"mode,omitempty"`
 

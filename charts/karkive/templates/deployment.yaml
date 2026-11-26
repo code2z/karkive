@@ -38,6 +38,9 @@ spec:
             - --metrics-bind-address=:{{ .Values.metrics.port }}
             - --busybox-image={{ .Values.defaults.busyboxImage }}
             - --gnupg-image={{ .Values.defaults.gnupgImage }}
+            {{- if .Values.defaults.ageImage }}
+            - --age-image={{ .Values.defaults.ageImage }}
+            {{- end }}
             - --postgres-image={{ .Values.defaults.postgresImage }}
             - --rclone-image={{ .Values.defaults.rcloneImage }}
             - --runner-postgres-image={{ .Values.defaults.runnerImages.postgres }}

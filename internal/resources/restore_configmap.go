@@ -47,6 +47,10 @@ func MutateRestoreConfigMap(cm *corev1.ConfigMap, restore *karkivev1alpha1.Resto
 		cm.Data["STRIP_PGAUDIT_EXTENSION"] = boolEnv(restore.Spec.StripPgAuditExtension, true)
 	}
 
+	for k, v := range encryptionEnv(restore.Spec.Encryption) {
+		cm.Data[k] = v
+	}
+
 	if IsStreamRestore(restore) {
 		for k, v := range streamRestoreEnv(restore) {
 			cm.Data[k] = v

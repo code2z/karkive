@@ -93,7 +93,7 @@ func MutateBackupCronJob(cj *batchv1.CronJob, backup *karkivev1alpha1.Backup, cf
 // stageBackupContainers is one container per stage: cleanup → dump → compress → encrypt → s3-sync.
 func stageBackupContainers(backup *karkivev1alpha1.Backup, cfg config.Config, cmName, secret string) []corev1.Container {
 	busyImg, busyPull := busyBoxImage(backup.Spec.Images, cfg)
-	gpgImg, gpgPull := gnuPGImage(backup.Spec.Images, cfg)
+	encImg, encPull := encryptionImage(backup.Spec.Encryption, backup.Spec.Images, cfg)
 	cleanupRes, dumpRes, compressRes, encryptRes, s3Res := backupStageResources(backup)
 	containers := []corev1.Container{
 		newScriptContainer(scriptOpts{
@@ -109,7 +109,7 @@ func stageBackupContainers(backup *karkivev1alpha1.Backup, cfg config.Config, cm
 			ConfigMap: cmName, Resources: compressRes,
 			Security: ToolsSecurityContext(), TmpSubPath: "compress-tmp-dir",
 		}),
-		encryptContainer(gpgImg, gpgPull, encryptRes, cmName),
+		encryptContainer(backup.Spec.Encryption, encImg, encPull, encryptRes, cmName),
 	}
 	if backup.Spec.S3.EnabledOrDefault() {
 		s3Img, s3Pull := rcloneImage(backup.Spec.Images, cfg)
@@ -170,18 +170,14 @@ func dumpContainer(
 	}
 }
 
-func encryptContainer(image string, pull corev1.PullPolicy, res corev1.ResourceRequirements, cmName string) corev1.Container {
+func encryptContainer(enc *karkivev1alpha1.EncryptionSpec, image string, pull corev1.PullPolicy, res corev1.ResourceRequirements, cmName string) corev1.Container {
 	c := newScriptContainer(scriptOpts{
 		Name: "encrypt", Image: image, Pull: pull,
 		Script:    pipeline.MustBackupScript("encrypt.sh"),
 		ConfigMap: cmName, Resources: res,
 		Security: ToolsSecurityContext(), TmpSubPath: "encrypt-tmp-dir",
 	})
-	c.VolumeMounts = append(c.VolumeMounts, corev1.VolumeMount{
-		Name:      volumeGPG,
-		MountPath: mountGPG,
-		ReadOnly:  true,
-	})
+	c.VolumeMounts = append(c.VolumeMounts, encryptionVolumeMount(enc))
 	return c
 }
 
@@ -270,18 +266,7 @@ func backupVolumes(backup *karkivev1alpha1.Backup, secret string) []corev1.Volum
 	volumes := []corev1.Volume{
 		{Name: volumeDataDir, VolumeSource: datadir},
 		{Name: volumeTmp, VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
-		{
-			Name: volumeGPG,
-			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{
-					SecretName: secret,
-					Items: []corev1.KeyToPath{{
-						Key:  "gpg_passphrase",
-						Path: "gpg_passphrase",
-					}},
-				},
-			},
-		},
+		encryptionVolume(backup.Spec.Encryption, secret, BackupEncryptionSecretKey(backup)),
 	}
 	if IsPVCBackup(backup) {
 		volumes = append(volumes, pvcSourceVolume(backup))

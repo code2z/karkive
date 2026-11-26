@@ -2,8 +2,10 @@ package config
 
 // Config is operator-wide defaults, typically set from flags / Helm values.
 type Config struct {
-	BusyBoxImage  string
-	GnuPGImage    string
+	BusyBoxImage string
+	GnuPGImage   string
+	// AgeImage runs encrypt/decrypt in Stage mode with encryption method age (needs /bin/sh and age).
+	AgeImage      string
 	PostgresImage string
 	// McImage is unused since 0.2.0 (kept so an old --mc-image flag still parses).
 	McImage     string
@@ -29,12 +31,14 @@ const (
 	// rclone for Stage-mode s3-sync and fetch (official image: Alpine, /bin/sh).
 	DefaultRcloneImage = "docker.io/rclone/rclone:1.76.0"
 	// Single container of pipeline mode Stream, one image per engine (runner/<engine>/Dockerfile, tag in runner/<engine>/TAG).
-	DefaultRunnerPostgresImage = "ghcr.io/mahdidarabi/karkive-runner-postgres:pg18.7-rclone1.76.0-r1"
-	DefaultRunnerMariaDBImage  = "ghcr.io/mahdidarabi/karkive-runner-mariadb:mariadb10.6.23-rclone1.76.0-r1"
-	DefaultRunnerRedisImage    = "ghcr.io/mahdidarabi/karkive-runner-redis:redis7.4.12-rclone1.76.0-r1"
-	DefaultRunnerPVCImage      = "ghcr.io/mahdidarabi/karkive-runner-pvc:trixie-rclone1.76.0-r1"
-	DefaultMariaDBImage        = "docker.io/library/mariadb:10.6"
-	DefaultRedisImage          = "docker.io/library/redis:7.4"
+	DefaultRunnerPostgresImage = "ghcr.io/mahdidarabi/karkive-runner-postgres:pg18.7-rclone1.76.0-r2"
+	DefaultRunnerMariaDBImage  = "ghcr.io/mahdidarabi/karkive-runner-mariadb:mariadb10.6.23-rclone1.76.0-r2"
+	DefaultRunnerRedisImage    = "ghcr.io/mahdidarabi/karkive-runner-redis:redis7.4.12-rclone1.76.0-r2"
+	DefaultRunnerPVCImage      = "ghcr.io/mahdidarabi/karkive-runner-pvc:trixie-rclone1.76.0-r2"
+	// Stage-mode encrypt/decrypt with encryption method age. The pvc runner (Debian, /bin/sh) ships age; the gpg image does not.
+	DefaultAgeImage     = DefaultRunnerPVCImage
+	DefaultMariaDBImage = "docker.io/library/mariadb:10.6"
+	DefaultRedisImage   = "docker.io/library/redis:7.4"
 	// GNU tar (pvcdump). BusyBox tar lacks --numeric-owner and large-file support.
 	DefaultTarImage = "docker.io/library/debian:trixie-slim"
 

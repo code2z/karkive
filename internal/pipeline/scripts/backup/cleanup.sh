@@ -19,12 +19,13 @@ log "local retention=${LOCAL_KEEP} day(s); pruning retained dumps under ${RETAIN
 prune_pipeline_logs "${DATA_ROOT}" "${LOCAL_KEEP}"
 DUMP_PREFIX="${DUMP_PREFIX:-pg_dump}"
 case "${DUMP_PREFIX}" in
-  mysqldump) RETAINED_GLOB='mysqldump-*.sql.gz.gpg' ;;
-  redisdump) RETAINED_GLOB='redisdump-*.rdb.gz.gpg' ;;
-  pvcdump)   RETAINED_GLOB='pvcdump-*.tar.gz.gpg' ;;
-  *)         RETAINED_GLOB='pg_dump-*.pgdump.gz.gpg' ;;
+  mysqldump) RETAINED_GLOB='mysqldump-*.sql.gz' ;;
+  redisdump) RETAINED_GLOB='redisdump-*.rdb.gz' ;;
+  pvcdump)   RETAINED_GLOB='pvcdump-*.tar.gz' ;;
+  *)         RETAINED_GLOB='pg_dump-*.pgdump.gz' ;;
 esac
-find "${RETAINED_DIR}" -type f -name "${RETAINED_GLOB}" -mtime "+${LOCAL_KEEP}" -print \
+# Both encryptions (.gpg and .age) age out, so switching spec.encryption.method still prunes older dumps.
+find "${RETAINED_DIR}" -type f \( -name "${RETAINED_GLOB}.gpg" -o -name "${RETAINED_GLOB}.age" \) -mtime "+${LOCAL_KEEP}" -print \
   | while IFS= read -r f; do
       log "deleted expired local ${f}"
       rm -f "${f}"
@@ -32,13 +33,14 @@ find "${RETAINED_DIR}" -type f -name "${RETAINED_GLOB}" -mtime "+${LOCAL_KEEP}" 
 # Legacy / stray encrypted dumps outside retained/
 # -delete implies -depth, which disables -prune; delete via rm instead.
 find "${DATA_ROOT}" \( -path "${RETAINED_DIR}" -o -path "${DATA_DIR}" \) -prune -o \
-  -type f \( -name 'pg_dump-*.pgdump.gz.gpg' -o -name 'mysqldump-*.sql.gz.gpg' -o -name 'redisdump-*.rdb.gz.gpg' -o -name 'pvcdump-*.tar.gz.gpg' \) \
+  -type f \( -name 'pg_dump-*.pgdump.gz.gpg' -o -name 'mysqldump-*.sql.gz.gpg' -o -name 'redisdump-*.rdb.gz.gpg' -o -name 'pvcdump-*.tar.gz.gpg' \
+    -o -name 'pg_dump-*.pgdump.gz.age' -o -name 'mysqldump-*.sql.gz.age' -o -name 'redisdump-*.rdb.gz.age' -o -name 'pvcdump-*.tar.gz.age' \) \
   -mtime "+${LOCAL_KEEP}" -print \
   | while IFS= read -r f; do
       log "deleted expired local ${f}"
       rm -f "${f}"
     done || true
-# Job scratch dirs ($HOSTNAME) are ephemeral once .gpg is in retained/.
+# Job scratch dirs ($HOSTNAME) are ephemeral once .gpg / .age is in retained/.
 # Drop every prior process dir immediately (keep retained/, logs/, lost+found).
 log "removing old process/scratch dirs (keep retained/, logs/, and current ${HOSTNAME})"
 find "${DATA_ROOT}" -mindepth 1 -maxdepth 1 -type d \

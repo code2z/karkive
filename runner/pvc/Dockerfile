@@ -9,11 +9,11 @@ ARG TARGETARCH
 COPY install-rclone.sh /usr/local/sbin/install-rclone.sh
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends ca-certificates curl unzip gnupg zstd tar bash; \
+    apt-get install -y --no-install-recommends ca-certificates curl unzip gnupg age zstd tar bash; \
     /usr/local/sbin/install-rclone.sh; \
     apt-get purge -y --auto-remove curl unzip; \
     rm -rf /var/lib/apt/lists/* /usr/local/sbin/install-rclone.sh; \
-    tar --version | head -n 1; zstd --version; gpg --version | head -n 1; rclone version | head -n 1
+    tar --version | head -n 1; zstd --version; gpg --version | head -n 1; age --version; rclone version | head -n 1
 USER 26:26
 ENTRYPOINT []
 CMD ["/bin/bash"]

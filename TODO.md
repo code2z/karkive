@@ -82,7 +82,7 @@
 - [ ] Stream restore for Redis without `REPLICAOF`: load the RDB into an in-pod `redis-server` and `MIGRATE`/`RESTORE` keys out, so the target needs no inbound connection to the Job
 - [ ] Postgres restore without scratch: `pg_restore --jobs` needs a seekable file, so the decrypted dump lands on the volume once. Stream straight into `pg_restore` when `jobs: 1`, and size the volume from the last object size otherwise
 - [ ] MariaDB parallel dump/restore with `mydumper` / `myloader` (per-table files, zstd) behind `jobs > 1`
-- [ ] Encrypt with `age` (X25519 public key) instead of symmetric gpg: Backups hold only the public key, Restores hold the private key; also faster than gpg on large streams
+- [x] Encrypt with `age` (X25519 public key) instead of symmetric gpg: Backups hold only the public key, Restores hold the private key; also faster than gpg on large streams
 - [ ] Record the last object in `status.lastObject` (key, size, duration, compression ratio) and expose `karkive_backup_last_size_bytes`; alert on a sudden size drop
 - [ ] Verify each upload: `rclone check --download` of the object against a sha256 computed in the pipe (`tee >(sha256sum)`), stored in the `.meta` sidecar
 - [ ] Bandwidth and IO limits for big dumps (`rclone --bwlimit`, `ionice`, `pg_dump --jobs` capped by DB CPU) so a backup does not starve the primary; prefer a read replica host (`spec.database.readHost`)

@@ -20,7 +20,7 @@ func MutateRestoreCronJob(cj *batchv1.CronJob, restore *karkivev1alpha1.Restore,
 	}
 
 	busyImg, busyPull := busyBoxImage(restore.Spec.Images, cfg)
-	gpgImg, gpgPull := gnuPGImage(restore.Spec.Images, cfg)
+	encImg, encPull := encryptionImage(restore.Spec.Encryption, restore.Spec.Images, cfg)
 	s3Img, s3Pull := rcloneImage(restore.Spec.Images, cfg)
 	cleanupRes, fetchRes, decryptRes, extractRes, restoreRes := restoreStageResources(restore)
 	secret := restoreSecretName(restore)
@@ -51,7 +51,7 @@ func MutateRestoreCronJob(cj *batchv1.CronJob, restore *karkivev1alpha1.Restore,
 				Volume: volumeWorkdir, MountPath: workdir,
 			}),
 			restoreFetchContainer(s3Img, s3Pull, fetchRes, cmName, secret, workdir),
-			restoreDecryptContainer(gpgImg, gpgPull, decryptRes, cmName, workdir),
+			restoreDecryptContainer(restore.Spec.Encryption, encImg, encPull, decryptRes, cmName, workdir),
 			newScriptContainer(scriptOpts{
 				Name: "extract", Image: busyImg, Pull: busyPull,
 				Script:    pipeline.MustRestoreScript("extract.sh"),
@@ -112,7 +112,7 @@ func restoreFetchContainer(image string, pull corev1.PullPolicy, res corev1.Reso
 	return c
 }
 
-func restoreDecryptContainer(image string, pull corev1.PullPolicy, res corev1.ResourceRequirements, cmName, workdir string) corev1.Container {
+func restoreDecryptContainer(enc *karkivev1alpha1.EncryptionSpec, image string, pull corev1.PullPolicy, res corev1.ResourceRequirements, cmName, workdir string) corev1.Container {
 	c := newScriptContainer(scriptOpts{
 		Name: "decrypt", Image: image, Pull: pull,
 		Script:    pipeline.MustRestoreScript("decrypt.sh"),
@@ -120,11 +120,7 @@ func restoreDecryptContainer(image string, pull corev1.PullPolicy, res corev1.Re
 		Security: ToolsSecurityContext(), TmpSubPath: "gpg-tmp",
 		Volume: volumeWorkdir, MountPath: workdir,
 	})
-	c.VolumeMounts = append(c.VolumeMounts, corev1.VolumeMount{
-		Name:      volumeGPG,
-		MountPath: mountGPG,
-		ReadOnly:  true,
-	})
+	c.VolumeMounts = append(c.VolumeMounts, encryptionVolumeMount(enc))
 	return c
 }
 
@@ -202,17 +198,6 @@ func restoreVolumes(restore *karkivev1alpha1.Restore, secret string) []corev1.Vo
 	return []corev1.Volume{
 		{Name: volumeWorkdir, VolumeSource: workdir},
 		{Name: volumeTmp, VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
-		{
-			Name: volumeGPG,
-			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{
-					SecretName: secret,
-					Items: []corev1.KeyToPath{{
-						Key:  "gpg_passphrase",
-						Path: "gpg_passphrase",
-					}},
-				},
-			},
-		},
+		encryptionVolume(restore.Spec.Encryption, secret, RestoreEncryptionSecretKey(restore)),
 	}
 }

@@ -31,10 +31,6 @@ const (
 	conflictRequeue = time.Second
 )
 
-var requiredBackupSecretKeys = []string{
-	"gpg_passphrase",
-}
-
 // requiredBackupDBSecretKeys are skipped for engine pvc (no database login).
 var requiredBackupDBSecretKeys = []string{
 	"username",
@@ -189,7 +185,8 @@ func (r *BackupReconciler) ensureSecret(ctx context.Context, backup *karkivev1al
 	if err := r.Get(ctx, key, secret); err != nil {
 		return err
 	}
-	required := requiredBackupSecretKeys
+	// Encryption key: gpg_passphrase (gpg, default) or age_recipient (age public key).
+	required := []string{resources.BackupEncryptionSecretKey(backup)}
 	if !resources.IsPVCBackup(backup) {
 		required = append(append([]string{}, requiredBackupDBSecretKeys...), required...)
 	}
