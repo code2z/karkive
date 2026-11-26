@@ -6,7 +6,7 @@
     <title>KArkive — Kubernetes operator for logical backups</title>
     <meta
       name="description"
-      content="KArkive is a Kubernetes operator for scheduled logical backups and restores. Declare a Backup or Restore CR; it dumps, gzip-compresses, GPG-encrypts, and syncs to S3. PostgreSQL, MariaDB, Redis, and PVC files."
+      content="KArkive is a Kubernetes operator for scheduled logical backups and restores. Declare a Backup or Restore CR; it dumps, compresses, GPG-encrypts and uploads to S3 with rclone, stage by stage or streamed in one pipe. PostgreSQL, MariaDB, Redis, and PVC files."
     />
     <link rel="canonical" href="https://karkive.ir/" />
     <script>
@@ -28,7 +28,7 @@
     <meta property="og:title" content="KArkive — Kubernetes operator for logical backups" />
     <meta
       property="og:description"
-      content="Declare a Backup or Restore CR. KArkive dumps, gzip-compresses, GPG-encrypts, and syncs to S3. PostgreSQL, MariaDB, Redis, and PVC files."
+      content="Declare a Backup or Restore CR. KArkive dumps, compresses, GPG-encrypts and uploads to S3 with rclone, stage by stage or streamed with no plain dump on disk. PostgreSQL, MariaDB, Redis, and PVC files."
     />
     <meta property="og:locale" content="en_US" />
     <meta name="twitter:card" content="summary" />
@@ -86,7 +86,7 @@
           <p class="eyebrow">Kubernetes operator · <code>karkive.io/v1alpha1</code></p>
           <h1><span class="nb">You declare a <em>Backup</em>.</span><br />KArkive runs the archive.</h1>
           <p class="lede">
-            Scheduled logical backups and restores, in-cluster. Each CR becomes a CronJob whose pod dumps, compresses, GPG-encrypts and syncs to S3, and runs the same pipeline in reverse to restore.
+            Scheduled logical backups and restores, in-cluster. Each CR becomes a CronJob whose pod dumps, compresses, GPG-encrypts and uploads to S3 with rclone, one container per stage or streamed in a single pipe, and runs the same pipeline in reverse to restore.
           </p>
           <div class="cta">
             <a class="btn btn-primary" href="#install">Install with Helm</a>
@@ -121,8 +121,8 @@ app-postgres   postgres   0 2 * * *     Ready   <span class="ok">True</span>
 <span class="line" data-at="1"><span class="tag">pgdump  </span> pg_dump app → 20.4 GB</span>
 <span class="line" data-at="2"><span class="tag">compress</span> gzip → 1.78 GB</span>
 <span class="line" data-at="3"><span class="tag">encrypt </span> gpg → pg_dump-app-….pgdump.gz.gpg</span>
-<span class="line" data-at="4"><span class="tag">s3-sync </span> mirror → s3://backups/app/pgdump/</span>
-<span class="line" data-at="4"><span class="tag">s3-sync </span> pruned objects older than 14d</span>
+<span class="line" data-at="4"><span class="tag">s3-sync </span> rclone copy → s3://backups/app/pgdump/</span>
+<span class="line" data-at="4"><span class="tag">s3-sync </span> rclone delete --min-age 336h, pruned 1 object</span>
 <span class="line done" data-at="5"><span class="ok">✓</span> Job succeeded · BackupSucceeded=True</span></code></pre>
         </figure>
       </section>
@@ -135,15 +135,15 @@ app-postgres   postgres   0 2 * * *     Ready   <span class="ok">True</span>
         </article>
         <article>
           <h2>Shell you can read</h2>
-          <p>Every stage is a short POSIX script in its own container. No agent in your database, no custom format.</p>
+          <p>Every stage is a short shell script, in its own container or chained in one Stream pipe. No agent in your database, no custom format.</p>
         </article>
         <article>
           <h2>Standard artifacts</h2>
-          <p>Dumps are plain <code>pg_dump</code>, <code>mysqldump</code>, RDB or <code>tar</code>, gzip and GPG. You can restore without KArkive.</p>
+          <p>Dumps are <code>pg_dump</code>, <code>mysqldump</code>, RDB or <code>tar</code>, then gzip or zstd and GPG. You can restore without KArkive.</p>
         </article>
         <article>
           <h2>Uploads are not undone</h2>
-          <p>S3 retention prune is best effort: a flaky delete is retried and logged, never a failed backup.</p>
+          <p>S3 retention prune is best effort: rclone retries a flaky delete, then logs it. It never fails a backup.</p>
         </article>
       </section>
 
@@ -152,20 +152,22 @@ app-postgres   postgres   0 2 * * *     Ready   <span class="ok">True</span>
         <header class="section-head">
           <p class="eyebrow">How it works</p>
           <h2>A CR. Owned objects. A pipeline in one pod.</h2>
-          <p>The controller never shells out. It reconciles owned resources; the Job pod runs the stages, one container each, handing off through marker files on a shared volume. If one stage fails, the others stop.</p>
+          <p>The controller never shells out. It reconciles owned resources; the Job pod runs the pipeline. In Stage mode (the default) each stage is its own container, handing off through marker files on a shared volume; if one stage fails, the others stop. In Stream mode one container pipes the whole run straight to S3.</p>
         </header>
 
         <ol class="flow" aria-label="Reconcile flow">
           <li><span class="flow-k">1</span><strong>Backup / Restore CR</strong><span>Admitted by validating webhooks</span></li>
           <li><span class="flow-k">2</span><strong>KArkive reconciles</strong><span>Status, metrics, owner refs</span></li>
-          <li><span class="flow-k">3</span><strong>ConfigMap · PVC · CronJob</strong><span>Named <code>karkive-backup-&lt;name&gt;</code></span></li>
-          <li><span class="flow-k">4</span><strong>Pipeline pod</strong><span>One container per stage</span></li>
+          <li><span class="flow-k">3</span><strong>ConfigMap · PVC · CronJob</strong><span>Named <code>karkive-backup-&lt;name&gt;</code> or <code>karkive-restore-&lt;name&gt;</code></span></li>
+          <li><span class="flow-k">4</span><strong>Pipeline pod</strong><span>One container per stage, or one Stream pipe</span></li>
         </ol>
 
         <div class="pipeline" data-tabs>
-          <div class="tabs" role="tablist" aria-label="Pipeline direction">
-            <button type="button" role="tab" id="tab-pb" aria-controls="panel-pb" aria-selected="true">Backup</button>
-            <button type="button" role="tab" id="tab-pr" aria-controls="panel-pr" aria-selected="false" tabindex="-1">Restore</button>
+          <div class="tabs" role="tablist" aria-label="Pipeline mode and direction">
+            <button type="button" role="tab" id="tab-pb" aria-controls="panel-pb" aria-selected="true">Stage · backup</button>
+            <button type="button" role="tab" id="tab-pr" aria-controls="panel-pr" aria-selected="false" tabindex="-1">Stage · restore</button>
+            <button type="button" role="tab" id="tab-psb" aria-controls="panel-psb" aria-selected="false" tabindex="-1">Stream · backup</button>
+            <button type="button" role="tab" id="tab-psr" aria-controls="panel-psr" aria-selected="false" tabindex="-1">Stream · restore</button>
           </div>
           <div class="tab-panel" role="tabpanel" id="panel-pb" aria-labelledby="tab-pb">
             <ol class="stages">
@@ -173,19 +175,39 @@ app-postgres   postgres   0 2 * * *     Ready   <span class="ok">True</span>
               <li><b>dump</b><span><code>pg_dump</code>, <code>mysqldump</code>, <code>redis-cli --rdb</code> or <code>tar</code> of a PVC</span><small>engine image</small></li>
               <li><b>compress</b><span>gzip of the dump or archive</span><small>busybox</small></li>
               <li><b>encrypt</b><span>Symmetric GPG with <code>gpg_passphrase</code></span><small>gpg</small></li>
-              <li><b>s3-sync</b><span>Mirror to S3, then prune objects past <code>retentionDays</code></span><small>minio/mc</small></li>
+              <li><b>s3-sync</b><span><code>rclone copy</code> to S3, then <code>rclone delete --min-age</code> past <code>retentionDays</code></span><small>rclone</small></li>
             </ol>
-            <p class="note">Set <code>spec.s3.enabled: false</code> to skip <code>s3-sync</code> and keep encrypted dumps in <code>retained/</code> on the PVC.</p>
+            <p class="note">Stage is the default <code>spec.pipeline.mode</code>. Set <code>spec.s3.enabled: false</code> to skip <code>s3-sync</code> and keep encrypted dumps in <code>retained/</code> on the PVC.</p>
           </div>
           <div class="tab-panel" role="tabpanel" id="panel-pr" aria-labelledby="tab-pr" hidden>
             <ol class="stages">
               <li><b>cleanup</b><span>Clears the workdir and markers</span><small>busybox</small></li>
-              <li><b>fetch</b><span>Named object, or the newest dump with <code>useLatestBackupAsFallback</code></span><small>minio/mc</small></li>
+              <li><b>fetch</b><span>Named object, or the newest dump by S3 LastModified with <code>useLatestBackupAsFallback</code></span><small>rclone</small></li>
               <li><b>decrypt</b><span>GPG with the same passphrase</span><small>gpg</small></li>
               <li><b>extract</b><span>gunzip to a plain dump</span><small>busybox</small></li>
               <li><b>restore</b><span><code>psql</code>, <code>mariadb</code>, or <code>REPLICAOF</code> from an ephemeral Redis</span><small>engine image</small></li>
             </ol>
             <p class="note">Restore reads S3 and GPG keys from <code>secretRef</code> and target credentials from a separate engine Secret.</p>
+          </div>
+          <div class="tab-panel" role="tabpanel" id="panel-psb" aria-labelledby="tab-psb" hidden>
+            <ol class="stages">
+              <li><b>cleanup</b><span>Clears old run dirs and local dumps past <code>localRetentionDays</code></span><small>runner</small></li>
+              <li><b>dump</b><span><code>pg_dump --format=custom</code> (or <code>directory --jobs</code>), <code>mariadb-dump</code>, <code>redis-cli --rdb -</code> or <code>tar</code></span><small>runner</small></li>
+              <li><b>compress</b><span>zstd inside <code>pg_dump</code>; <code>zstd -T0</code> for the other engines</span><small>runner</small></li>
+              <li><b>encrypt</b><span><code>gpg</code> on the stream, same <code>gpg_passphrase</code></span><small>runner</small></li>
+              <li><b>upload</b><span><code>rclone rcat</code> multipart into S3, then best-effort prune past <code>retentionDays</code></span><small>runner</small></li>
+            </ol>
+            <p class="note"><code>spec.pipeline.mode: Stream</code> runs one container, <code>dump | compress | gpg | rclone rcat</code>, with no plain dump on disk. Tune it with <code>pipeline.jobs</code> and <code>pipeline.compressionLevel</code> (zstd 1–19).</p>
+          </div>
+          <div class="tab-panel" role="tabpanel" id="panel-psr" aria-labelledby="tab-psr" hidden>
+            <ol class="stages">
+              <li><b>fetch</b><span><code>rclone cat</code> of the named or newest object</span><small>runner</small></li>
+              <li><b>decrypt</b><span><code>gpg -d</code> on the stream</span><small>runner</small></li>
+              <li><b>decompress</b><span>zstd, or gunzip for Stage objects; Postgres dumps stay compressed for <code>pg_restore</code></span><small>runner</small></li>
+              <li><b>load</b><span><code>pg_restore --jobs</code>, streamed into <code>mariadb</code>, or an in-pod <code>redis-server</code> the target <code>REPLICAOF</code>s</span><small>runner</small></li>
+              <li><b>analyze</b><span>Postgres: <code>vacuumdb --analyze-only</code>, TimescaleDB <code>ALTER EXTENSION UPDATE</code></span><small>runner</small></li>
+            </ol>
+            <p class="note">A Stream Restore also reads Stage objects (<code>*.gz.gpg</code>), so switch the Restore first and the Backup later. A Stage Restore cannot read Stream objects.</p>
           </div>
         </div>
 
@@ -196,7 +218,7 @@ app-postgres   postgres   0 2 * * *     Ready   <span class="ok">True</span>
           </article>
           <article>
             <h3><code>CronJobWithVolumeHolder</code></h3>
-            <p>A pause Deployment keeps an RWO claim attached to one node; Job pods land beside it with pod affinity.</p>
+            <p><code>spec.runtime.mode: CronJobWithVolumeHolder</code>: a pause Deployment, <code>karkive-backup-&lt;name&gt;-holder</code>, keeps an RWO claim attached to one node; Job pods land beside it with required pod affinity. Needs persistence; Ready waits for the holder.</p>
           </article>
         </div>
       </section>
@@ -215,6 +237,14 @@ app-postgres   postgres   0 2 * * *     Ready   <span class="ok">True</span>
             <div>
               <dt>Ready is not last job</dt>
               <dd><code>status.phase</code> means owned resources are in place. The last run is the <code>BackupSucceeded</code> / <code>RestoreSucceeded</code> condition.</dd>
+            </div>
+            <div>
+              <dt>Stage or Stream</dt>
+              <dd><code>spec.pipeline.mode</code> defaults to <code>Stage</code>, one container per stage. <code>Stream</code> runs one container from the per-engine runner image. Same Secret keys either way.</dd>
+            </div>
+            <div>
+              <dt>S3 is optional</dt>
+              <dd><code>spec.s3.enabled: false</code> keeps encrypted dumps in <code>retained/</code> on the PVC and needs no S3 keys or endpoint.</dd>
             </div>
             <div>
               <dt>Manual runs</dt>
@@ -248,7 +278,11 @@ app-postgres   postgres   0 2 * * *     Ready   <span class="ok">True</span>
     <span class="k">path</span>: app/pgdump
     <span class="k">retentionDays</span>: 14
   <span class="k">secretRef</span>:
-    <span class="k">name</span>: backup-app-postgres</code></pre>
+    <span class="k">name</span>: backup-app-postgres
+  <span class="k">pipeline</span>:
+    <span class="k">mode</span>: Stream        <span class="c"># default Stage</span>
+    <span class="k">jobs</span>: 4             <span class="c"># pg_dump --jobs</span>
+    <span class="k">compressionLevel</span>: 3 <span class="c"># zstd 1-19</span></code></pre>
           <pre class="tab-panel" role="tabpanel" id="panel-yr" aria-labelledby="tab-yr" tabindex="0" hidden><code><span class="k">apiVersion</span>: karkive.io/v1alpha1
 <span class="k">kind</span>: Restore
 <span class="k">metadata</span>:
@@ -268,7 +302,10 @@ app-postgres   postgres   0 2 * * *     Ready   <span class="ok">True</span>
     <span class="k">name</span>: restore-app-postgres
   <span class="k">postgresSecret</span>:
     <span class="k">name</span>: sandbox-postgres
-  <span class="k">useLatestBackupAsFallback</span>: true</code></pre>
+  <span class="k">useLatestBackupAsFallback</span>: true
+  <span class="k">pipeline</span>:
+    <span class="k">mode</span>: Stream  <span class="c"># reads Stage objects too</span>
+    <span class="k">jobs</span>: 4       <span class="c"># pg_restore --jobs</span></code></pre>
           <pre class="tab-panel" role="tabpanel" id="panel-ys" aria-labelledby="tab-ys" tabindex="0" hidden><code><span class="k">apiVersion</span>: v1
 <span class="k">kind</span>: Secret
 <span class="k">metadata</span>:
@@ -288,26 +325,27 @@ app-postgres   postgres   0 2 * * *     Ready   <span class="ok">True</span>
         <header class="section-head">
           <p class="eyebrow">Engines</p>
           <h2>Three logical dumps and a file archive. One CR shape.</h2>
+          <p>Stage mode runs upstream images: CloudNativePG PostgreSQL 18.4, MariaDB 10.6, Redis 7.4, Debian trixie-slim, BusyBox, <code>vladgh/gpg</code> and <code>rclone/rclone</code>. Stream mode runs one image per engine, <code>ghcr.io/mahdidarabi/karkive-runner-&lt;engine&gt;</code>, with the client tools, zstd, gpg and rclone inside. Override it per CR with <code>spec.images.runner</code>.</p>
         </header>
         <div class="engine-grid">
           <article>
             <h3>PostgreSQL</h3>
-            <p><code>pg_dump</code> in, <code>psql</code> out, on CloudNativePG images. Detects TimescaleDB, and can strip pgAudit DDL on restore.</p>
+            <p>Stage: plain <code>pg_dump</code> in, <code>psql</code> out. Stream: custom or directory format with zstd, <code>pg_restore --jobs</code>, then <code>vacuumdb --analyze-only</code>. TimescaleDB loads at the source version from a <code>.meta</code> sidecar; pgAudit DDL can be stripped.</p>
             <span class="tag-row"><span>backup</span><span>restore</span></span>
           </article>
           <article>
             <h3>MariaDB</h3>
-            <p><code>mysqldump</code> with utf8mb4 and hex-blob. Restore recreates the schema and strips GTID and DEFINER noise.</p>
+            <p><code>mysqldump</code> with utf8mb4 and hex-blob; restore recreates the database and strips GTID and DEFINER noise. Stream: <code>mariadb-dump | zstd</code>, loaded into any target database name.</p>
             <span class="tag-row"><span>backup</span><span>restore</span></span>
           </article>
           <article>
             <h3>Redis</h3>
-            <p><code>redis-cli --rdb</code> on backup. Restore loads an ephemeral <code>redis-server</code> and has the target <code>REPLICAOF</code> it.</p>
+            <p><code>redis-cli --rdb</code> on backup. Restore loads an ephemeral <code>redis-server</code> on <code>:6380</code> and has the target <code>REPLICAOF</code> it, so the target must reach the Job pod.</p>
             <span class="tag-row"><span>backup</span><span>restore</span></span>
           </article>
           <article>
             <h3>PVC files</h3>
-            <p>GNU <code>tar</code> of an existing claim, mounted read-only. <code>consumerSelector</code> places the Job beside the pod that owns an RWO claim.</p>
+            <p><code>engine: pvc</code>: GNU <code>tar</code> of an existing claim, mounted read-only, with <code>path</code> and <code>excludes</code>. <code>consumerSelector</code> places the Job beside the pod that owns an RWO claim. Restore is manual: <code>gpg -d | tar -x</code>.</p>
             <span class="tag-row"><span>backup</span></span>
           </article>
         </div>
@@ -398,7 +436,7 @@ app-postgres   postgres   0 2 * * *     Ready   <span class="ok">True</span>
         <header class="section-head">
           <p class="eyebrow">Install</p>
           <h2>Helm from GHCR.</h2>
-          <p>Current chart <strong id="ver">0.2.3</strong>. Images publish to <code>ghcr.io/mahdidarabi/karkive</code>, charts to <code>oci://ghcr.io/mahdidarabi/charts/karkive</code>.</p>
+          <p>Current chart <strong id="ver">0.2.3</strong>. The operator image publishes to <code>ghcr.io/mahdidarabi/karkive</code>, Stream runners to <code>ghcr.io/mahdidarabi/karkive-runner-&lt;engine&gt;</code>, charts to <code>oci://ghcr.io/mahdidarabi/charts/karkive</code>.</p>
         </header>
 
         <div class="install-grid">
@@ -416,6 +454,7 @@ app-postgres   postgres   0 2 * * *     Ready   <span class="ok">True</span>
   -n karkive-system --create-namespace</code></pre>
             <pre class="tab-panel" role="tabpanel" id="panel-im" aria-labelledby="tab-im" tabindex="0" hidden><code>helm upgrade --install karkive \
   oci://ghcr.io/mahdidarabi/charts/karkive \
+  --version 0.2.3 \
   -n karkive-system --create-namespace \
   --set metrics.serviceMonitor.enabled=true \
   --set metrics.prometheusRule.enabled=true \
