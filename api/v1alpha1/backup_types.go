@@ -106,7 +106,7 @@ type BackupSpec struct {
 	// McConfigDir is deprecated and ignored since 0.2.0 (the S3 client is rclone, configured from env).
 	McConfigDir string `json:"mcConfigDir,omitempty"`
 
-	// Pipeline selects Stage (one container per stage, default) or Stream (one container, dump | compress | encrypt | upload) and tunes it.
+	// Pipeline selects Stream (one container, dump | compress | encrypt | upload; default) or Stage (one container per stage) and tunes it.
 	Pipeline *PipelineSpec `json:"pipeline,omitempty"`
 
 	// Images overrides operator-wide default images.

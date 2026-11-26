@@ -59,6 +59,7 @@ func TestBackupReconcile_CreatesOwnedResources(t *testing.T) {
 				Path:     "app/pgdump",
 			},
 			SecretRef: corev1.LocalObjectReference{Name: "backup-creds"},
+			Pipeline:  stagePipeline(),
 		},
 	}
 	secret := &corev1.Secret{
@@ -216,6 +217,7 @@ func TestBackupReconcile_S3DisabledSkipsSyncAndS3Keys(t *testing.T) {
 			Database:  karkivev1alpha1.DatabaseSpec{Host: "postgres.example.svc.cluster.local", Name: "app"},
 			S3:        karkivev1alpha1.S3Spec{Enabled: &enabled},
 			SecretRef: corev1.LocalObjectReference{Name: "backup-creds"},
+			Pipeline:  stagePipeline(),
 		},
 	}
 	secret := &corev1.Secret{
@@ -284,6 +286,7 @@ func TestBackupReconcile_RedisCreatesOwnedResources(t *testing.T) {
 				Path:     "cache/redisdump",
 			},
 			SecretRef: corev1.LocalObjectReference{Name: "backup-creds"},
+			Pipeline:  stagePipeline(),
 		},
 	}
 	secret := &corev1.Secret{
@@ -798,6 +801,7 @@ func testBackupCR() *karkivev1alpha1.Backup {
 				Path:     "app/pgdump",
 			},
 			SecretRef: corev1.LocalObjectReference{Name: "backup-creds"},
+			Pipeline:  stagePipeline(),
 		},
 	}
 }

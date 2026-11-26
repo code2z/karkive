@@ -30,6 +30,7 @@ func testBackup() *karkivev1alpha1.Backup {
 				Path:     "app/pgdump",
 			},
 			SecretRef: corev1.LocalObjectReference{Name: "backup-app-postgres"},
+			Pipeline:  stageMode,
 		},
 	}
 }
@@ -201,6 +202,7 @@ func testRestore() *karkivev1alpha1.Restore {
 				Name: "postgres",
 			},
 			Persistence: &karkivev1alpha1.PersistenceSpec{Enabled: ptr.To(false)},
+			Pipeline:    stageMode,
 		},
 	}
 }
@@ -532,5 +534,29 @@ func TestStreamRestoreIsOneContainer(t *testing.T) {
 	}
 	if cm.Data["JOBS"] != "2" {
 		t.Errorf("restore jobs default=%s", cm.Data["JOBS"])
+	}
+}
+
+func TestPipelineDefaultsToStream(t *testing.T) {
+	backup := testBackup()
+	backup.Spec.Pipeline = nil
+	var bcj batchv1.CronJob
+	MutateBackupCronJob(&bcj, backup, config.Config{})
+	if got := containerNames(&bcj); len(got) != 1 || got[0] != "stream" {
+		t.Errorf("backup without spec.pipeline: containers=%v, want [stream]", got)
+	}
+	restore := testRestore()
+	restore.Spec.Pipeline = &karkivev1alpha1.PipelineSpec{}
+	var rcj batchv1.CronJob
+	MutateRestoreCronJob(&rcj, restore, config.Config{})
+	if got := containerNames(&rcj); len(got) != 1 || got[0] != "stream" {
+		t.Errorf("restore with empty spec.pipeline: containers=%v, want [stream]", got)
+	}
+	var cm corev1.ConfigMap
+	if err := MutateBackupConfigMap(&cm, backup, config.Config{}); err != nil {
+		t.Fatal(err)
+	}
+	if cm.Data["PIPELINE_MODE"] != string(karkivev1alpha1.PipelineModeStream) {
+		t.Errorf("PIPELINE_MODE=%q", cm.Data["PIPELINE_MODE"])
 	}
 }

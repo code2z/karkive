@@ -14,7 +14,7 @@
 - [ ] Bandwidth and IO limits for big dumps (`rclone --bwlimit`, `ionice`, `pg_dump --jobs` capped by DB CPU) so a backup does not starve the primary; prefer a read replica host (`spec.database.readHost`)
 - [ ] Continuous archiving for Postgres (WAL via the CNPG Barman/plugin path) for point-in-time recovery; keep logical dumps for portability
 - [ ] Incremental PVC archives (`tar --listed-incremental` or restic/kopia) instead of a full tar every run
-- [ ] Make `Stream` the default once it has run in production for a while; then drop the Stage-mode BusyBox/gpg/rclone images
+- [ ] Drop Stage mode and its BusyBox/gpg/rclone images once no CR sets `pipeline.mode: Stage` (before 1.0.0)
 
 ## API and controller
 
@@ -125,6 +125,7 @@
 - [x] rclone instead of mc for Stage and Stream (multipart streaming upload, retries, age-based delete)
 - [x] Per-engine runner images, built in CI only when `runner/<engine>/` changes
 - [x] Encrypt with `age` (X25519 public key) instead of symmetric gpg: Backups hold only the public key, Restores hold the private key; also faster than gpg on large streams. Covers public-key encryption, so no GPG keypair mode is planned
+- [x] `Stream` is the default `spec.pipeline.mode`; `Stage` stays available as an opt-in
 
 ### API and controller
 

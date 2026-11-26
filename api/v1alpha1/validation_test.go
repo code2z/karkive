@@ -224,3 +224,15 @@ func TestValidateEncryption(t *testing.T) {
 		t.Errorf("pvc age stream: %v", err)
 	}
 }
+
+func TestPipelineModeDefaultsToStream(t *testing.T) {
+	var nilSpec *PipelineSpec
+	for _, p := range []*PipelineSpec{nilSpec, {}} {
+		if p.EffectiveMode() != PipelineModeStream || !p.IsStream() {
+			t.Errorf("%v: mode=%q, want Stream", p, p.EffectiveMode())
+		}
+	}
+	if (&PipelineSpec{Mode: PipelineModeStage}).IsStream() {
+		t.Error("explicit Stage must stay Stage")
+	}
+}

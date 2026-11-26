@@ -37,7 +37,7 @@ spec:
   encryption:
     method: age          # objects end in .age (pg_dump-app-<ts>.dump.age in Stream mode)
   pipeline:
-    mode: Stream         # Stage mode works too (encrypt runs in defaults.ageImage)
+    mode: Stream         # default; Stage works too (encrypt runs in defaults.ageImage)
   persistence:
     enabled: true
     size: 1Gi

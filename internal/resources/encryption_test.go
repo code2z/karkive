@@ -13,6 +13,8 @@ import (
 var (
 	ageEncryption = &karkivev1alpha1.EncryptionSpec{Method: karkivev1alpha1.EncryptionMethodAge}
 	streamMode    = &karkivev1alpha1.PipelineSpec{Mode: karkivev1alpha1.PipelineModeStream}
+	// stageMode opts a fixture into the per-stage pipeline (Stream is the default).
+	stageMode = &karkivev1alpha1.PipelineSpec{Mode: karkivev1alpha1.PipelineModeStage}
 )
 
 func podSpec(cj *batchv1.CronJob) corev1.PodSpec {
@@ -90,7 +92,7 @@ func TestEncryptionDefaultsToGPG(t *testing.T) {
 	}
 }
 
-// The default (no spec.encryption) must render exactly what it did before age existed.
+// Stage with no spec.encryption must render exactly what it did before age existed.
 func TestStageGPGDefaultUnchanged(t *testing.T) {
 	backup := testBackup()
 	var bcj batchv1.CronJob

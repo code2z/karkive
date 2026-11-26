@@ -31,6 +31,7 @@ func testPVCBackup() *karkivev1alpha1.Backup {
 				Path:     "nextcloud/pvcdump",
 			},
 			SecretRef: corev1.LocalObjectReference{Name: "backup-nextcloud-data"},
+			Pipeline:  stageMode,
 		},
 	}
 }

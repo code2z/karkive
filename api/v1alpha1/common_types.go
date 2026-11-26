@@ -173,17 +173,17 @@ func (e *EncryptionSpec) Extension() string {
 type PipelineMode string
 
 const (
-	// PipelineModeStage runs one container per stage (cleanup, dump, compress, encrypt, s3-sync; restore: cleanup, fetch, decrypt, extract, restore), handing files over the shared volume. Default.
+	// PipelineModeStage runs one container per stage (cleanup, dump, compress, encrypt, s3-sync; restore: cleanup, fetch, decrypt, extract, restore), handing files over the shared volume.
 	PipelineModeStage PipelineMode = "Stage"
-	// PipelineModeStream runs one container. Backup streams dump | compress | encrypt | upload with no plain file on disk; Postgres uses pg_dump's custom (or directory) format with zstd, so restores load with pg_restore --jobs.
+	// PipelineModeStream runs one container. Backup streams dump | compress | encrypt | upload with no plain file on disk; Postgres uses pg_dump's custom (or directory) format with zstd, so restores load with pg_restore --jobs. Default.
 	PipelineModeStream PipelineMode = "Stream"
 )
 
 // PipelineSpec tunes the pipeline. All fields are optional.
 type PipelineSpec struct {
-	// Mode is Stage (default) or Stream.
+	// Mode is Stream (default) or Stage.
 	// Stream objects are named *.dump.gpg / *.dir.tar.gpg (postgres) and *.zst.gpg (other engines); with encryption method age the suffix is .age instead of .gpg. A Stream Restore also reads Stage objects (*.gz.gpg / *.gz.age); a Stage Restore reads only Stage objects.
-	// +kubebuilder:default=Stage
+	// +kubebuilder:default=Stream
 	Mode PipelineMode `json:"mode,omitempty"`
 
 	// Jobs is the parallelism of the database tools in Stream mode: pg_dump --jobs (directory format, scratch holds the compressed dump), pg_restore --jobs and vacuumdb --jobs. Default 1 for Backup and 2 for Restore. Ignored in Stage mode.
@@ -197,10 +197,10 @@ type PipelineSpec struct {
 	CompressionLevel *int32 `json:"compressionLevel,omitempty"`
 }
 
-// EffectiveMode is Stage when the spec or its mode is unset.
+// EffectiveMode is Stream when the spec or its mode is unset.
 func (p *PipelineSpec) EffectiveMode() PipelineMode {
 	if p == nil || p.Mode == "" {
-		return PipelineModeStage
+		return PipelineModeStream
 	}
 	return p.Mode
 }

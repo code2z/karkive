@@ -33,6 +33,11 @@ func streamPipeline() *karkivev1alpha1.PipelineSpec {
 	return &karkivev1alpha1.PipelineSpec{Mode: karkivev1alpha1.PipelineModeStream}
 }
 
+// stagePipeline opts a fixture into the per-stage pipeline (Stream is the default).
+func stagePipeline() *karkivev1alpha1.PipelineSpec {
+	return &karkivev1alpha1.PipelineSpec{Mode: karkivev1alpha1.PipelineModeStage}
+}
+
 // ageBackupSecret has the public key and no gpg_passphrase.
 func ageBackupSecret(base *corev1.Secret) *corev1.Secret {
 	s := base.DeepCopy()
@@ -58,7 +63,7 @@ func assertSecretInvalid(t *testing.T, conds []metav1.Condition, phase, wantPhas
 }
 
 func TestBackupReconcile_AgeNeedsRecipientNotPassphrase(t *testing.T) {
-	for _, mode := range []*karkivev1alpha1.PipelineSpec{nil, streamPipeline()} {
+	for _, mode := range []*karkivev1alpha1.PipelineSpec{nil, stagePipeline(), streamPipeline()} {
 		t.Run(string(mode.EffectiveMode()), func(t *testing.T) {
 			backup := testBackupCR()
 			backup.Spec.Encryption = ageEncryption()
@@ -123,6 +128,7 @@ func testRestoreCR() *karkivev1alpha1.Restore {
 			SecretRef:      corev1.LocalObjectReference{Name: "restore-creds"},
 			PostgresSecret: &karkivev1alpha1.SecretKeySelector{Name: "postgres"},
 			Persistence:    &karkivev1alpha1.PersistenceSpec{Enabled: ptr.To(false)},
+			Pipeline:       stagePipeline(),
 		},
 	}
 }
@@ -157,7 +163,7 @@ func reconcileRestore(t *testing.T, restore *karkivev1alpha1.Restore, jobSecretD
 }
 
 func TestRestoreReconcile_AgeNeedsIdentityNotPassphrase(t *testing.T) {
-	for _, mode := range []*karkivev1alpha1.PipelineSpec{nil, streamPipeline()} {
+	for _, mode := range []*karkivev1alpha1.PipelineSpec{nil, stagePipeline(), streamPipeline()} {
 		t.Run(string(mode.EffectiveMode()), func(t *testing.T) {
 			restore := testRestoreCR()
 			restore.Spec.Encryption = ageEncryption()

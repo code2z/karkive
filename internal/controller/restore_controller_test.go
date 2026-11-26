@@ -34,6 +34,7 @@ func TestRestoreReconcile_CreatesOwnedResources(t *testing.T) {
 				Path:     "app/pgdump",
 			},
 			SecretRef: corev1.LocalObjectReference{Name: "restore-creds"},
+			Pipeline:  stagePipeline(),
 			PostgresSecret: &karkivev1alpha1.SecretKeySelector{
 				Name: "postgres",
 			},
@@ -198,6 +199,7 @@ func TestRestoreReconcile_MariaDBCreatesOwnedResources(t *testing.T) {
 				Path:     "app/mysqldump",
 			},
 			SecretRef:     corev1.LocalObjectReference{Name: "restore-creds"},
+			Pipeline:      stagePipeline(),
 			MariaDBSecret: &karkivev1alpha1.SecretKeySelector{Name: "mariadb"},
 			Persistence:   &karkivev1alpha1.PersistenceSpec{Enabled: ptr.To(false)},
 		},

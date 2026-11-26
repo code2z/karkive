@@ -67,7 +67,7 @@ type RestoreSpec struct {
 	// McConfigDir is deprecated and ignored since 0.2.0 (the S3 client is rclone, configured from env).
 	McConfigDir string `json:"mcConfigDir,omitempty"`
 
-	// Pipeline selects Stage (default) or Stream and tunes it. A Stream Restore reads Stream and Stage objects and loads Postgres custom/directory dumps with pg_restore --jobs.
+	// Pipeline selects Stream (default) or Stage and tunes it. A Stream Restore reads Stream and Stage objects and loads Postgres custom/directory dumps with pg_restore --jobs; a Stage Restore reads only Stage objects.
 	Pipeline *PipelineSpec `json:"pipeline,omitempty"`
 
 	// BackupFile is a specific S3 object name. Empty + UseLatestBackupAsFallback

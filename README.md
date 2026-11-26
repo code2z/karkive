@@ -61,26 +61,7 @@ flowchart LR
   P -. read-only .-> SRC[(Source PVC)]
 ```
 
-### Backup pipeline
-
-`cleanup` → dump → `compress` → `encrypt` → `s3-sync` (omit `s3-sync` when `spec.s3.enabled` is false)
-
-After the upload, `s3-sync` deletes objects older than `spec.s3.retentionDays`. This prune is best effort: a failed delete is retried, then logged as `WARN` and left for the next run, so it never fails a backup that is already uploaded.
-
-### Restore pipeline
-
-`cleanup` → `fetch` → `decrypt` → `extract` → restore
-
-| Engine | Dump | Restore |
-| --- | --- | --- |
-| `postgres` | `pg_dump` | `pgrestore` |
-| `mariadb` | `mysqldump` | `mysqlrestore` |
-| `redis` | `redis-cli --rdb` | ephemeral `redis-server` + `REPLICAOF` |
-| `pvc` | GNU `tar` of a read-only PVC (`pvcdump`) | not implemented; [restore manually](#pvc-backup) |
-
-Shared stages use BusyBox (`find` / `gzip`), `vladgh/gpg` (or an `age` image with [`spec.encryption.method: age`](#encryption-gpg-or-age)), and `rclone` (S3). Engine images default to CloudNativePG PostgreSQL 18.4, MariaDB 10.6, Redis 7.4, and Debian trixie-slim (GNU tar).
-
-### Stream pipeline (`spec.pipeline.mode: Stream`)
+### Stream pipeline (default)
 
 One container per Job instead of five, and no plain dump on disk:
 
@@ -97,14 +78,35 @@ One container per Job instead of five, and no plain dump on disk:
 ```yaml
 spec:
   pipeline:
-    mode: Stream
+    mode: Stream         # default; Stage is opt-in
     jobs: 4              # pg_dump/pg_restore --jobs (default 1 backup, 2 restore)
     compressionLevel: 3  # zstd 1-19
 ```
 
-With `spec.encryption.method: age` every object above ends in `.age` instead of `.gpg`. A Stream Restore also reads Stage objects (`*.gz.gpg`, or `*.gz.age` with age), so you can switch a Restore first and the Backup later. A Stage Restore cannot read Stream objects. On a 300 MB pgbench database the Stream dump was 1.6 MiB against 8.4 MiB for plain SQL + gzip, and the restore took 4 s with `--jobs=4`.
+With `spec.encryption.method: age` every object above ends in `.age` instead of `.gpg`. A Stream Restore also reads Stage objects (`*.gz.gpg`, or `*.gz.age` with age), so you can switch a Restore first and the Backup later. On a 300 MB pgbench database the Stream dump was 1.6 MiB against 8.4 MiB for plain SQL + gzip, and the restore took 4 s with `--jobs=4`.
+
+Since this release a Backup or Restore without `spec.pipeline.mode` runs Stream; set `mode: Stage` to keep the old per-stage containers. A Stage Restore cannot read Stream objects, so a Restore that must stay on Stage needs its Backup on Stage too.
 
 Each engine has its own runner image, `ghcr.io/mahdidarabi/karkive-runner-<engine>` (`runner/<engine>/`). It holds the client tools, `zstd`, `gpg`, `age` and `rclone`. The `Runners` workflow builds an image only when its folder changes. Tags name the tool versions inside, `<client><version>-rclone<version>-r<revision>` (for example `karkive-runner-postgres:pg18.7-rclone1.76.0-r2`), and come from `runner/<engine>/TAG`. Bump the versions or the `-r` revision with every Dockerfile change: CI never overwrites a published tag. Override it per CR with `spec.images.runner`, or operator-wide with `defaults.runnerImages`.
+
+### Stage pipeline (`spec.pipeline.mode: Stage`)
+
+One container per stage, handing off through marker files on the shared volume.
+
+**Backup:** `cleanup` → dump → `compress` → `encrypt` → `s3-sync` (omit `s3-sync` when `spec.s3.enabled` is false)
+
+After the upload, `s3-sync` deletes objects older than `spec.s3.retentionDays`. This prune is best effort: a failed delete is retried, then logged as `WARN` and left for the next run, so it never fails a backup that is already uploaded.
+
+**Restore:** `cleanup` → `fetch` → `decrypt` → `extract` → restore
+
+| Engine | Dump | Restore |
+| --- | --- | --- |
+| `postgres` | `pg_dump` | `pgrestore` |
+| `mariadb` | `mysqldump` | `mysqlrestore` |
+| `redis` | `redis-cli --rdb` | ephemeral `redis-server` + `REPLICAOF` |
+| `pvc` | GNU `tar` of a read-only PVC (`pvcdump`) | not implemented; [restore manually](#pvc-backup) |
+
+Shared stages use BusyBox (`find` / `gzip`), `vladgh/gpg` (or an `age` image with [`spec.encryption.method: age`](#encryption-gpg-or-age)), and `rclone` (S3). Engine images default to CloudNativePG PostgreSQL 18.4, MariaDB 10.6, Redis 7.4, and Debian trixie-slim (GNU tar).
 
 ### Runtime
 
@@ -228,9 +230,9 @@ Useful knobs:
 | `spec.job.ttlSecondsAfterFinished` | `86400` | Cleanup finished Jobs |
 | `spec.runtime.mode` | `CronJob` | `CronJob` (default) or `CronJobWithVolumeHolder`. `PersistentPodWithTriggerJob` and `PersistentPodWithInPodCron` are reserved and rejected until implemented |
 | `spec.encryption.method` | `gpg` | `gpg` (symmetric, `gpg_passphrase`) or `age` (public key `age_recipient`); see [Encryption](#encryption-gpg-or-age) |
-| `spec.pipeline` | `mode: Stage` | `Stage` (one container per stage) or `Stream` (one container, streamed to S3); `jobs`, `compressionLevel` |
-| `spec.images` | operator defaults | Shared `ImageSet`: busybox / gnupg / age / postgres / mariadb / redis / tar / rclone / runner (`mc` is ignored since 0.2.3) |
-| `spec.resources` | — | Per-stage CPU/memory (`cleanup`, `dump`, `compress`, `encrypt`, `s3Sync`); `dump` is `pvcdump` for engine `pvc` |
+| `spec.pipeline` | `mode: Stream` | `Stream` (default; one container, streamed to S3) or opt-in `Stage` (one container per stage) with `spec.pipeline.mode: Stage`; `jobs`, `compressionLevel` |
+| `spec.images` | operator defaults | Shared `ImageSet`: `runner` (Stream), plus busybox / gnupg / age / postgres / mariadb / redis / tar / rclone (Stage mode only; `mc` is ignored since 0.2.3) |
+| `spec.resources` | — | CPU/memory: `stream` (Stream), or per stage (Stage mode only: `cleanup`, `dump`, `compress`, `encrypt`, `s3Sync`; `dump` is `pvcdump` for engine `pvc`) |
 | `spec.component` | CR name | `app.kubernetes.io/component` label |
 
 Trigger a run without waiting for cron:
@@ -274,7 +276,7 @@ spec:
 | `spec.pvc.excludes` | — | GNU tar `--exclude` patterns. `cache` matches at any depth; `./cache` only at the top |
 | `spec.pvc.consumerSelector` | — | Labels of the pods that mount the claim. Adds required podAffinity (`kubernetes.io/hostname`) to Job pods and the volume holder |
 | `spec.pvc.runAsUser` / `runAsGroup` | root | Unset: root with only `CAP_DAC_OVERRIDE` (reads any file). Set a non-root UID where Pod Security `restricted` applies; tar then reads only what that UID can |
-| `spec.images.tar` | `--tar-image` | Image with GNU tar |
+| `spec.images.tar` | `--tar-image` | Image with GNU tar (Stage mode only) |
 
 Things to know:
 
@@ -491,15 +493,15 @@ Operator-wide defaults (Helm `values.yaml` → flags):
 | --- | --- | --- |
 | `watchNamespace` | `WATCH_NAMESPACE` | all namespaces |
 | `leaderElection` | `--leader-elect` | `true` in the chart |
-| `defaults.busyboxImage` | `--busybox-image` | `busybox:1.37` |
-| `defaults.gnupgImage` | `--gnupg-image` | `vladgh/gpg:1.3.11` |
+| `defaults.busyboxImage` | `--busybox-image` | `busybox:1.37` (Stage mode only) |
+| `defaults.gnupgImage` | `--gnupg-image` | `vladgh/gpg:1.3.11` (Stage mode only) |
 | `defaults.ageImage` | `--age-image` | `ghcr.io/mahdidarabi/karkive-runner-pvc:trixie-rclone1.76.0-r2` (Stage-mode encrypt / decrypt with `spec.encryption.method: age`; needs `/bin/sh` and `age`) |
-| `defaults.postgresImage` | `--postgres-image` | `cloudnative-pg/postgresql:18.4` |
-| `defaults.mariadbImage` | `--mariadb-image` | `mariadb:10.6` |
-| `defaults.redisImage` | `--redis-image` | `redis:7.4` |
-| `defaults.tarImage` | `--tar-image` | `debian:trixie-slim` (GNU tar, engine `pvc`) |
+| `defaults.postgresImage` | `--postgres-image` | `cloudnative-pg/postgresql:18.4` (Stage mode only) |
+| `defaults.mariadbImage` | `--mariadb-image` | `mariadb:10.6` (Stage mode only) |
+| `defaults.redisImage` | `--redis-image` | `redis:7.4` (Stage mode only) |
+| `defaults.tarImage` | `--tar-image` | `debian:trixie-slim` (GNU tar, engine `pvc`; Stage mode only) |
 | `defaults.rcloneImage` | `--rclone-image` | `rclone/rclone:1.76.0` (Stage-mode s3-sync / fetch) |
-| `defaults.runnerImages.<engine>` | `--runner-<engine>-image` | `ghcr.io/mahdidarabi/karkive-runner-<engine>:<runner/<engine>/TAG>`, e.g. `pg18.7-rclone1.76.0-r2` (Stream mode) |
+| `defaults.runnerImages.<engine>` | `--runner-<engine>-image` | `ghcr.io/mahdidarabi/karkive-runner-<engine>:<runner/<engine>/TAG>`, e.g. `pg18.7-rclone1.76.0-r2` (Stream mode, the default) |
 | `defaults.s3.endpoint` | `--default-s3-endpoint` | empty (required on the CR when S3 is enabled, unless set) |
 | `defaults.s3.bucket` | `--default-s3-bucket` | empty |
 

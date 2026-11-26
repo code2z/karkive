@@ -328,9 +328,9 @@ spec:
                     type: string
                 type: object
               pipeline:
-                description: Pipeline selects Stage (one container per stage, default)
-                  or Stream (one container, dump | compress | encrypt | upload) and
-                  tunes it.
+                description: Pipeline selects Stream (one container, dump | compress
+                  | encrypt | upload; default) or Stage (one container per stage)
+                  and tunes it.
                 properties:
                   compressionLevel:
                     description: CompressionLevel is the zstd level in Stream mode
@@ -350,9 +350,9 @@ spec:
                     minimum: 1
                     type: integer
                   mode:
-                    default: Stage
+                    default: Stream
                     description: |-
-                      Mode is Stage (default) or Stream.
+                      Mode is Stream (default) or Stage.
                       Stream objects are named *.dump.gpg / *.dir.tar.gpg (postgres) and *.zst.gpg (other engines); with encryption method age the suffix is .age instead of .gpg. A Stream Restore also reads Stage objects (*.gz.gpg / *.gz.age); a Stage Restore reads only Stage objects.
                     enum:
                     - Stage
