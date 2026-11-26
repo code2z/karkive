@@ -81,17 +81,21 @@ func FinishedAt(job *batchv1.Job) *metav1.Time {
 	return nil
 }
 
+// Failed reports the Job's result, not its pod attempts. status.failed counts failed pods, so a Job that succeeded on a retry (failed=1, succeeded=1, Complete=True) is not failed. The Complete and Failed conditions decide; the counters are only a fallback for Jobs without conditions.
 func Failed(job *batchv1.Job) bool {
-	if job.Status.Failed > 0 {
-		return true
-	}
 	for i := range job.Status.Conditions {
 		c := job.Status.Conditions[i]
-		if c.Type == batchv1.JobFailed && c.Status == corev1.ConditionTrue {
+		if c.Status != corev1.ConditionTrue {
+			continue
+		}
+		switch c.Type {
+		case batchv1.JobComplete, batchv1.JobSuccessCriteriaMet:
+			return false
+		case batchv1.JobFailed, batchv1.JobFailureTarget:
 			return true
 		}
 	}
-	return false
+	return job.Status.Succeeded == 0 && job.Status.Failed > 0
 }
 
 func condition(job *batchv1.Job, typ batchv1.JobConditionType) (reason, message string) {

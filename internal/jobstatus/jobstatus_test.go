@@ -79,3 +79,30 @@ func TestLastFinishedPicksLatest(t *testing.T) {
 		t.Fatalf("got %+v", got)
 	}
 }
+
+func TestFailedUsesJobResultNotPodAttempts(t *testing.T) {
+	cond := func(tp batchv1.JobConditionType) []batchv1.JobCondition {
+		return []batchv1.JobCondition{{Type: tp, Status: corev1.ConditionTrue}}
+	}
+	cases := []struct {
+		name string
+		st   batchv1.JobStatus
+		want bool
+	}{
+		{"succeeded on retry", batchv1.JobStatus{Failed: 1, Succeeded: 1, Conditions: cond(batchv1.JobComplete)}, false},
+		{"succeeded first try", batchv1.JobStatus{Succeeded: 1, Conditions: cond(batchv1.JobComplete)}, false},
+		{"backoff limit exceeded", batchv1.JobStatus{Failed: 4, Conditions: cond(batchv1.JobFailed)}, true},
+		{"failure target before Failed", batchv1.JobStatus{Failed: 2, Conditions: cond(batchv1.JobFailureTarget)}, true},
+		{"no conditions, only failed pods", batchv1.JobStatus{Failed: 1}, true},
+		{"no conditions, succeeded after a failed pod", batchv1.JobStatus{Failed: 1, Succeeded: 1}, false},
+	}
+	for _, tc := range cases {
+		if got := Failed(&batchv1.Job{Status: tc.st}); got != tc.want {
+			t.Errorf("%s: Failed=%v, want %v", tc.name, got, tc.want)
+		}
+	}
+	retried := &batchv1.Job{Status: batchv1.JobStatus{Failed: 1, Succeeded: 1, Conditions: cond(batchv1.JobComplete)}}
+	if got := Summarize(retried).Outcome; got != karkivev1alpha1.LastJobOutcomeSucceeded {
+		t.Errorf("Summarize outcome=%q, want Succeeded", got)
+	}
+}
