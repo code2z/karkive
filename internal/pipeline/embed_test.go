@@ -265,6 +265,8 @@ func TestStreamScripts(t *testing.T) {
 			"REDIS_RESTORE_METHOD",
 			"redis_pull_in_target",
 			"redis_push_to_target",
+			"need_scratch",
+			"SCRATCH_LIMIT_BYTES",
 			"COPY",
 			"REPLACE",
 		},

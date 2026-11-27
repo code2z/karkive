@@ -197,7 +197,7 @@ MariaDB, Redis and PVC samples live under [`examples/`](examples/).
 | `spec.s3.enabled` | `true` | Upload to S3. `false` keeps encrypted dumps in `retained/` on the PVC (requires persistence; no S3 keys, endpoint or bucket) |
 | `spec.s3.retentionDays` | `14` | Age after which S3 objects (and `.meta` sidecars) are pruned |
 | `spec.localRetentionDays` | `7` | Age after which `retained/` dumps and log files are pruned |
-| `spec.persistence.size` | `1Gi` | Scratch PVC (or emptyDir limit). Raising it expands the PVC (StorageClass needs `allowVolumeExpansion: true`); lowering it is ignored |
+| `spec.persistence.size` | `1Gi` | Scratch PVC (or emptyDir limit). Raising it expands the PVC (StorageClass needs `allowVolumeExpansion: true`); lowering it is ignored. With an emptyDir in Stream mode it is added to the container's ephemeral-storage limit, since the kubelet counts emptyDir usage against it |
 | `spec.pipeline` | `mode: Stream` | `Stream` or `Stage`; `jobs`, `compressionLevel` (Stream only) |
 | `spec.encryption.method` | `gpg` | `gpg` (`gpg_passphrase`) or `age` (`age_recipient`); see [Encryption](#encryption-gpg-or-age) |
 | `spec.runtime.mode` | `CronJob` | See [Runtime](#runtime) |
@@ -209,7 +209,7 @@ MariaDB, Redis and PVC samples live under [`examples/`](examples/).
 | `spec.job.ttlSecondsAfterFinished` | `86400` | Cleanup of finished Jobs |
 | `spec.job.timeZone` | — | CronJob time zone |
 | `spec.images` | operator defaults | `runner` (Stream); `busybox`, `gnupg`, `age`, `postgres`, `mariadb`, `redis`, `tar`, `rclone` (Stage) |
-| `spec.resources` | — | `stream` (Stream); `cleanup`, `dump`, `compress`, `encrypt`, `s3Sync` (Stage) |
+| `spec.resources` | — | `stream` (Stream; default limits 2 CPU, 1Gi memory, 1Gi ephemeral-storage plus the emptyDir scratch size); `cleanup`, `dump`, `compress`, `encrypt`, `s3Sync` (Stage). An ephemeral-storage limit set here replaces the computed one |
 | `spec.component` | CR name | `app.kubernetes.io/component` label |
 
 Trigger a run without waiting for the schedule:
@@ -315,7 +315,7 @@ spec:
 | `spec.redisRestoreMethod` | `PullInTarget` | Redis only: `PullInTarget` (the target `REPLICAOF`s the Job pod) or `PushToTarget` (the Job pod copies the keys to the target; Stream only). See below |
 | `spec.stripPgAuditExtension` | `true` | Skip pgAudit extension, event-trigger and function DDL (Postgres) |
 | `spec.database.ownerRole` | `database.name` | Postgres owner of the recreated database |
-| `spec.persistence` | PVC, `1Gi` | Scratch. Postgres custom/directory dumps land here once, because `pg_restore --jobs` needs a seekable file; Redis writes the RDB here |
+| `spec.persistence` | PVC, `1Gi` | Scratch. Postgres custom/directory dumps land here once, because `pg_restore --jobs` needs a seekable file; Redis writes the RDB here. The Job checks free space against the object size before downloading and fails at once if it does not fit |
 | `spec.pipeline.jobs` | `2` | `pg_restore` / `vacuumdb --jobs` (Stream) |
 | `spec.job.backoffLimit` | `1` | Fail fast |
 | `spec.runtime.mode` | `CronJob` | Same modes as Backup |

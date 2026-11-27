@@ -37,7 +37,9 @@ case "${ENCRYPTION_METHOD}:${OBJ}" in
   gpg:*.age|age:*.gpg) die "${OBJ} does not match spec.encryption.method ${ENCRYPTION_METHOD} (expected *.${ENC_EXT})" ;;
 esac
 SRC="${S3_PREFIX}/${OBJ}"
-log "restoring ${SRC} ($(human "$(s3_size "${OBJ}")"))"
+OBJ_SIZE="$(s3_size "${OBJ}")"
+OBJ_SIZE="${OBJ_SIZE:-0}"
+log "restoring ${SRC} ($(human "${OBJ_SIZE}"))"
 
 fetch() {
   rclone cat "${SRC}" | decrypt_stream
@@ -69,6 +71,8 @@ restore_postgres() {
   esac
 
   # Custom (.dump) or directory (.dir.tar) format. pg_restore --jobs needs a seekable file, so the decrypted dump lands on scratch once.
+  # pg_dump compressed it already, so it is about the object size; 5% covers the tar and encryption framing.
+  need_scratch "$(( OBJ_SIZE + OBJ_SIZE / 20 ))" "the decrypted dump"
   local dump
   if [[ "${OBJ}" == *.dir.tar.gpg || "${OBJ}" == *.dir.tar.age ]]; then
     dump="${RUN_DIR}/dump"
@@ -236,6 +240,8 @@ restore_redis() {
     protected=yes
   fi
   mkdir -p "${dir}"
+  # The RDB is written decompressed, so the object size is only a lower bound.
+  need_scratch "${OBJ_SIZE}" "the RDB (decompressed; at least the object size)"
   log "download | decrypt | decompress → ${dir}/dump.rdb"
   fetch | decompress_stream "${OBJ}" > "${dir}/dump.rdb"
   log "RDB $(human "$(stat -c %s "${dir}/dump.rdb")"); starting redis-server on ${bind}:6380"

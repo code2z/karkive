@@ -1,6 +1,8 @@
 package resources
 
 import (
+	"strconv"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 
@@ -226,17 +228,50 @@ func DefaultStreamResources() corev1.ResourceRequirements {
 }
 
 func backupStreamResources(backup *karkivev1alpha1.Backup) corev1.ResourceRequirements {
-	if backup.Spec.Resources == nil {
-		return DefaultStreamResources()
+	var override *corev1.ResourceRequirements
+	if backup.Spec.Resources != nil {
+		override = backup.Spec.Resources.Stream
 	}
-	return mergeResources(DefaultStreamResources(), backup.Spec.Resources.Stream)
+	return withScratchEphemeral(mergeResources(DefaultStreamResources(), override), override, backup.Spec.Persistence)
 }
 
 func restoreStreamResources(restore *karkivev1alpha1.Restore) corev1.ResourceRequirements {
-	if restore.Spec.Resources == nil {
-		return DefaultStreamResources()
+	var override *corev1.ResourceRequirements
+	if restore.Spec.Resources != nil {
+		override = restore.Spec.Resources.Stream
 	}
-	return mergeResources(DefaultStreamResources(), restore.Spec.Resources.Stream)
+	return withScratchEphemeral(mergeResources(DefaultStreamResources(), override), override, restore.Spec.Persistence)
+}
+
+// withScratchEphemeral adds the emptyDir scratch size to the ephemeral-storage limit when persistence is off.
+// The kubelet counts emptyDir usage against the pod's ephemeral-storage limits, so without this a Stream pod is evicted at the 1Gi default long before the emptyDir reaches persistence.size.
+// A limit the CR sets itself in spec.resources.stream is kept as is.
+func withScratchEphemeral(res corev1.ResourceRequirements, override *corev1.ResourceRequirements, p *karkivev1alpha1.PersistenceSpec) corev1.ResourceRequirements {
+	if PersistenceEnabled(p) {
+		return res
+	}
+	if override != nil {
+		if _, ok := override.Limits[corev1.ResourceEphemeralStorage]; ok {
+			return res
+		}
+	}
+	out := *res.DeepCopy()
+	if out.Limits == nil {
+		out.Limits = corev1.ResourceList{}
+	}
+	limit := out.Limits[corev1.ResourceEphemeralStorage].DeepCopy()
+	limit.Add(persistenceSize(p))
+	out.Limits[corev1.ResourceEphemeralStorage] = limit
+	return out
+}
+
+// scratchLimitBytes is the emptyDir scratch size in bytes, or empty when scratch is a PVC (df then reports the claim itself).
+func scratchLimitBytes(p *karkivev1alpha1.PersistenceSpec) string {
+	if PersistenceEnabled(p) {
+		return ""
+	}
+	size := persistenceSize(p)
+	return strconv.FormatInt(size.Value(), 10)
 }
 
 func pipelineJobs(p *karkivev1alpha1.PipelineSpec, def int32) int32 {

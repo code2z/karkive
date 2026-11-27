@@ -132,6 +132,10 @@ func streamRestoreEnv(restore *karkivev1alpha1.Restore) map[string]string {
 		"WORK_ROOT":     restoreWorkdir(restore),
 		"JOBS":          strconv.Itoa(int(pipelineJobs(restore.Spec.Pipeline, config.DefaultStreamRestoreJobs))),
 	}
+	// An emptyDir reports the node's free disk to df, not its sizeLimit: the script also checks against this size.
+	if limit := scratchLimitBytes(restore.Spec.Persistence); limit != "" {
+		env["SCRATCH_LIMIT_BYTES"] = limit
+	}
 	if restore.Spec.Encryption.IsAge() {
 		env["AGE_IDENTITY_FILE"] = mountAge + "/" + SecretKeyAgeIdentity
 	} else {

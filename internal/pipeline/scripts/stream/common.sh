@@ -141,6 +141,35 @@ decompress_stream() {
   esac
 }
 
+# Free bytes for scratch under WORK_ROOT. df is right for a PVC. An emptyDir reports the node's free disk instead, so with SCRATCH_LIMIT_BYTES (the emptyDir sizeLimit) the budget is that size minus what WORK_ROOT already holds.
+scratch_free() {
+  local free used cap
+  free="$(df -Pk "${WORK_ROOT}" 2>/dev/null | awk 'NR == 2 {print $4 * 1024}')"
+  if [ -n "${SCRATCH_LIMIT_BYTES:-}" ]; then
+    used="$(du -sk "${WORK_ROOT}" 2>/dev/null | awk '{print $1 * 1024}')"
+    cap=$(( SCRATCH_LIMIT_BYTES - ${used:-0} ))
+    if [ -z "${free}" ] || [ "${cap}" -lt "${free}" ]; then
+      free="${cap}"
+    fi
+  fi
+  echo "${free}"
+}
+
+# Fail before a download when scratch cannot hold it, instead of running out of space (or being evicted) halfway through.
+need_scratch() {
+  local need="$1" what="$2" free
+  [ "${need:-0}" -gt 0 ] || return 0
+  free="$(scratch_free)"
+  if [ -z "${free}" ]; then
+    log "WARN: cannot read free space on ${WORK_ROOT}; skipping the scratch check"
+    return 0
+  fi
+  if [ "${need}" -gt "${free}" ]; then
+    die "${what} needs about $(human "${need}") of scratch, but ${WORK_ROOT} has $(human "$(( free > 0 ? free : 0 ))") free; raise spec.persistence.size"
+  fi
+  log "scratch: ${what} needs about $(human "${need}"); $(human "${free}") free"
+}
+
 # Size in bytes of one object (empty when missing).
 s3_size() {
   rclone lsf --files-only --format s --include "$1" "${S3_PREFIX}/" 2>/dev/null | head -n 1

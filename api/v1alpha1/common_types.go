@@ -85,7 +85,7 @@ type PersistenceSpec struct {
 	// AccessModes of the PVC. Default [ReadWriteOnce].
 	AccessModes []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
 
-	// Size of the PVC, or emptyDir.sizeLimit when Enabled=false. Default 1Gi.
+	// Size of the PVC, or emptyDir.sizeLimit when Enabled=false. Default 1Gi. With an emptyDir in Stream mode it is also added to the container's ephemeral-storage limit (unless spec.resources.stream sets one), because the kubelet counts emptyDir usage against that limit.
 	// Raising it expands the existing PVC (the StorageClass must set
 	// allowVolumeExpansion); lowering it is ignored because PVCs cannot shrink.
 	Size resource.Quantity `json:"size,omitempty"`

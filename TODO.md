@@ -6,7 +6,7 @@
 
 ## Speed and size (Stream mode)
 
-- [ ] Postgres restore without scratch: `pg_restore --jobs` needs a seekable file, so the decrypted dump lands on the volume once. Stream straight into `pg_restore` when `jobs: 1`, and size the volume from the last object size otherwise
+- [ ] Postgres restore without scratch: `pg_restore --jobs` needs a seekable file, so the decrypted dump lands on the volume once. Stream straight into `pg_restore` when `jobs: 1`, and size the volume from the last object size otherwise (needs `status.lastObject` and `backupRef`)
 - [ ] MariaDB parallel dump/restore with `mydumper` / `myloader` (per-table files, zstd) behind `jobs > 1`
 - [ ] Record the last object in `status.lastObject` (key, size, checksum, duration, compression ratio) and expose `karkive_backup_last_size_bytes`; alert on a sudden size drop. A Restore can default to it
 - [ ] Verify each upload: `rclone check --download` of the object against a sha256 computed in the pipe (`tee >(sha256sum)`), stored in the `.meta` sidecar
@@ -114,6 +114,7 @@
 - [x] MariaDB dump/restore: `--hex-blob` / utf8mb4 / `--databases`; restore strips GTID/DEFINER and recreates with utf8mb4
 - [x] Redis restore: ephemeral `redis-server` + `REPLICAOF` (not SCAN+MIGRATE)
 - [x] Redis restore without an inbound connection: `spec.redisRestoreMethod: PushToTarget` copies the keys out with `SCAN` + `MIGRATE` from a `redis-server` bound to `127.0.0.1`; `PullInTarget` (`REPLICAOF`) stays the default
+- [x] Stream pods with emptyDir scratch get the scratch size added to their ephemeral-storage limit, so the kubelet no longer evicts them at the 1Gi default; Stream restores check free scratch against the object size before downloading
 - [x] Make S3 sync optional (`spec.s3.enabled`, default true). When false: skip the `s3-sync` container, do not require S3 secret keys or endpoint/bucket. Encrypt still writes `retained/` on the PVC.
 - [x] Pick the latest restore object by S3 LastModified (rclone `lsf --format tp`), not by name. Stream object names carry seconds
 

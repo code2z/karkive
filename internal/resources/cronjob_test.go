@@ -6,6 +6,7 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	karkivev1alpha1 "github.com/mahdidarabi/KArkive/api/v1alpha1"
@@ -583,5 +584,83 @@ func TestMutateRestoreConfigMap_RedisRestoreMethod(t *testing.T) {
 	}
 	if _, ok := cm.Data["REDIS_RESTORE_METHOD"]; ok {
 		t.Error("REDIS_RESTORE_METHOD set for engine postgres")
+	}
+}
+
+func streamEphemeralLimit(t *testing.T, cj *batchv1.CronJob) string {
+	t.Helper()
+	c := cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0]
+	if c.Name != "stream" {
+		t.Fatalf("first container %s, want stream", c.Name)
+	}
+	q := c.Resources.Limits[corev1.ResourceEphemeralStorage]
+	return q.String()
+}
+
+func TestStreamEphemeralLimitCoversEmptyDirScratch(t *testing.T) {
+	stream := &karkivev1alpha1.PipelineSpec{Mode: karkivev1alpha1.PipelineModeStream}
+	r := testRestore()
+	r.Spec.Pipeline = stream
+	r.Spec.Persistence = &karkivev1alpha1.PersistenceSpec{Enabled: ptr.To(false), Size: resource.MustParse("2Gi")}
+	cj := &batchv1.CronJob{}
+	MutateRestoreCronJob(cj, r, config.Config{})
+	if got := streamEphemeralLimit(t, cj); got != "3Gi" {
+		t.Errorf("emptyDir 2Gi: ephemeral-storage limit=%s, want 3Gi (1Gi default + scratch)", got)
+	}
+
+	r.Spec.Persistence = &karkivev1alpha1.PersistenceSpec{Enabled: ptr.To(true), Size: resource.MustParse("2Gi")}
+	cj = &batchv1.CronJob{}
+	MutateRestoreCronJob(cj, r, config.Config{})
+	if got := streamEphemeralLimit(t, cj); got != "1Gi" {
+		t.Errorf("PVC scratch: ephemeral-storage limit=%s, want the 1Gi default", got)
+	}
+
+	r.Spec.Persistence = &karkivev1alpha1.PersistenceSpec{Enabled: ptr.To(false), Size: resource.MustParse("2Gi")}
+	r.Spec.Resources = &karkivev1alpha1.RestoreResources{Stream: &corev1.ResourceRequirements{
+		Limits: corev1.ResourceList{corev1.ResourceEphemeralStorage: resource.MustParse("5Gi")},
+	}}
+	cj = &batchv1.CronJob{}
+	MutateRestoreCronJob(cj, r, config.Config{})
+	if got := streamEphemeralLimit(t, cj); got != "5Gi" {
+		t.Errorf("explicit limit: ephemeral-storage limit=%s, want 5Gi as set", got)
+	}
+
+	r.Spec.Resources = &karkivev1alpha1.RestoreResources{Stream: &corev1.ResourceRequirements{
+		Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("4Gi")},
+	}}
+	cj = &batchv1.CronJob{}
+	MutateRestoreCronJob(cj, r, config.Config{})
+	if got := streamEphemeralLimit(t, cj); got != "3Gi" {
+		t.Errorf("memory-only override: ephemeral-storage limit=%s, want 3Gi", got)
+	}
+
+	b := testBackup()
+	b.Spec.Pipeline = stream
+	b.Spec.Persistence = &karkivev1alpha1.PersistenceSpec{Enabled: ptr.To(false)}
+	cj = &batchv1.CronJob{}
+	MutateBackupCronJob(cj, b, config.Config{})
+	if got := streamEphemeralLimit(t, cj); got != "2Gi" {
+		t.Errorf("backup emptyDir (default 1Gi): ephemeral-storage limit=%s, want 2Gi", got)
+	}
+}
+
+func TestRestoreConfigMapScratchLimit(t *testing.T) {
+	r := testRestore()
+	r.Spec.Pipeline = &karkivev1alpha1.PipelineSpec{Mode: karkivev1alpha1.PipelineModeStream}
+	r.Spec.Persistence = &karkivev1alpha1.PersistenceSpec{Enabled: ptr.To(false), Size: resource.MustParse("2Gi")}
+	cm := &corev1.ConfigMap{}
+	if err := MutateRestoreConfigMap(cm, r, config.Config{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := cm.Data["SCRATCH_LIMIT_BYTES"]; got != "2147483648" {
+		t.Errorf("SCRATCH_LIMIT_BYTES=%q, want 2147483648", got)
+	}
+	r.Spec.Persistence = &karkivev1alpha1.PersistenceSpec{Enabled: ptr.To(true)}
+	cm = &corev1.ConfigMap{}
+	if err := MutateRestoreConfigMap(cm, r, config.Config{}); err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := cm.Data["SCRATCH_LIMIT_BYTES"]; ok {
+		t.Errorf("SCRATCH_LIMIT_BYTES=%q set for PVC scratch", v)
 	}
 }
