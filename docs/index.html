@@ -435,7 +435,7 @@ app-postgres   postgres   0 2 * * *     Ready   <span class="ok">True</span>
         <header class="section-head">
           <p class="eyebrow">Install</p>
           <h2>Helm from GHCR.</h2>
-          <p>Current chart <strong id="ver">0.4.1</strong>. The operator image publishes to <code>ghcr.io/code2z/karkive</code>, Stream runners to <code>ghcr.io/code2z/karkive-runner-&lt;engine&gt;</code>, charts to <code>oci://ghcr.io/code2z/charts/karkive</code>.</p>
+          <p>Current chart <strong id="ver">0.5.0</strong>. The operator image publishes to <code>ghcr.io/code2z/karkive</code>, Stream runners to <code>ghcr.io/code2z/karkive-runner-&lt;engine&gt;</code>, charts to <code>oci://ghcr.io/code2z/charts/karkive</code>.</p>
         </header>
 
         <div class="install-grid">
@@ -449,11 +449,11 @@ app-postgres   postgres   0 2 * * *     Ready   <span class="ok">True</span>
               <button type="button" class="copy" data-copy-active aria-label="Copy the selected command">Copy</button>
             </div>
             <pre class="tab-panel" role="tabpanel" id="helm-install" aria-labelledby="tab-ih" tabindex="0"><code>helm install karkive oci://ghcr.io/code2z/charts/karkive \
-  --version 0.4.1 \
+  --version 0.5.0 \
   -n karkive-system --create-namespace</code></pre>
             <pre class="tab-panel" role="tabpanel" id="panel-im" aria-labelledby="tab-im" tabindex="0" hidden><code>helm upgrade --install karkive \
   oci://ghcr.io/code2z/charts/karkive \
-  --version 0.4.1 \
+  --version 0.5.0 \
   -n karkive-system --create-namespace \
   --set metrics.serviceMonitor.enabled=true \
   --set metrics.prometheusRule.enabled=true \
