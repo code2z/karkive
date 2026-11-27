@@ -78,7 +78,7 @@ type RestoreSpec struct {
 	// or missing. Default true.
 	UseLatestBackupAsFallback *bool `json:"useLatestBackupAsFallback,omitempty"`
 
-	// DropDatabaseIfExists drops a non-empty target before restore. Default true.
+	// DropDatabaseIfExists drops and recreates a non-empty target before restore (Redis: replaces its dataset). Default false: a non-empty target fails the restore.
 	DropDatabaseIfExists *bool `json:"dropDatabaseIfExists,omitempty"`
 
 	// StripPgAuditExtension removes pgAudit extension, event-trigger, and

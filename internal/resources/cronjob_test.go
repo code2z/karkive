@@ -222,7 +222,7 @@ func TestMutateRestoreConfigMap_Postgres(t *testing.T) {
 		"PG_OWNER_ROLE":                 "app",
 		"S3_PATH":                       "app/pgdump",
 		"USE_LATEST_BACKUP_AS_FALLBACK": "true",
-		"DROP_DATABASE_IF_EXISTS":       "true",
+		"DROP_DATABASE_IF_EXISTS":       "false",
 		"STRIP_PGAUDIT_EXTENSION":       "true",
 		"LOG_FILE_ENABLED":              "false",
 	}

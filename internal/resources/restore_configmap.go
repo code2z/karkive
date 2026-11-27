@@ -26,7 +26,7 @@ func MutateRestoreConfigMap(cm *corev1.ConfigMap, restore *karkivev1alpha1.Resto
 		"S3_PATH":                       restore.Spec.S3.Path,
 		"BACKUP_FILE":                   restore.Spec.BackupFile,
 		"USE_LATEST_BACKUP_AS_FALLBACK": boolEnv(restore.Spec.UseLatestBackupAsFallback, true),
-		"DROP_DATABASE_IF_EXISTS":       boolEnv(restore.Spec.DropDatabaseIfExists, true),
+		"DROP_DATABASE_IF_EXISTS":       boolEnv(restore.Spec.DropDatabaseIfExists, false),
 		"LOG_FILE_ENABLED":              boolEnv(restore.Spec.LogFileEnabled, false),
 	}
 

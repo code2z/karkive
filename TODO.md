@@ -20,7 +20,6 @@
 
 - [ ] Reject `spec.job.restartPolicy: Always` in the webhook (Jobs cannot use it; `validateJob` still accepts it). The default is already Never
 - [ ] Restore `spec.schedule` optional. Empty → create a suspended CronJob for `kubectl create job --from=…`
-- [ ] Default `dropDatabaseIfExists` to false (no implicit dataset replace / DROP DATABASE). Destructive restore must be explicit
 - [ ] Watch Secrets (`secretRef` + restore target secret) instead of 30s requeue on NotFound
 - [ ] `spec.backupRef` on Restore: inherit engine, S3 path, and encryption settings from a Backup
 - [ ] BackupRun / manual trigger CR or subresource (no `kubectl create job --from=cronjob/…`)
@@ -129,6 +128,7 @@
 
 ### API and controller
 
+- [x] Default `dropDatabaseIfExists` to false: replacing a non-empty target (DROP DATABASE, Redis REPLICAOF) must be explicit
 - [x] Keep `Ready` = resources admitted/synced. Add `BackupSucceeded` / `RestoreSucceeded` conditions from the last finished Job (do not overload `status.phase`)
 - [x] Prefix owned names by kind: `karkive-backup-<name>` and `karkive-restore-<name>` (breaking: migrate or document rename). Alternative: webhook uniqueness across kinds — weaker, still share one CronJob name if both CRs are `app-postgres`
 - [x] Event only on create or spec change. Patch status only when phase, conditions, or `lastJob` actually change
