@@ -43,7 +43,7 @@
         "url": "https://karkive.ir",
         "applicationCategory": "DeveloperApplication",
         "operatingSystem": "Kubernetes",
-        "license": "https://github.com/mahdidarabi/karkive",
+        "license": "https://github.com/code2z/karkive",
         "description": "Kubernetes operator for scheduled logical backups and restores of PostgreSQL, MariaDB, and Redis, plus PersistentVolumeClaim file backups.",
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
       }
@@ -70,7 +70,7 @@
           <a href="#monitoring">Monitoring</a>
           <a href="#install">Install</a>
         </nav>
-        <a class="gh" href="https://github.com/mahdidarabi/karkive" aria-label="KArkive on GitHub">
+        <a class="gh" href="https://github.com/code2z/karkive" aria-label="KArkive on GitHub">
           <svg class="gh-icon" viewBox="0 0 24 24" aria-hidden="true">
             <path fill="currentColor" d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.74.08-.74 1.2.08 1.84 1.23 1.84 1.23 1.07 1.83 2.8 1.3 3.48.99.11-.77.42-1.3.76-1.6-2.66-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.66.24 2.88.12 3.18a4.7 4.7 0 0 1 1.24 3.22c0 4.61-2.81 5.62-5.49 5.92.43.37.81 1.1.81 2.22v3.28c0 .32.22.69.83.57A12 12 0 0 0 12 .5Z" />
           </svg>
@@ -90,7 +90,7 @@
           </p>
           <div class="cta">
             <a class="btn btn-primary" href="#install">Install with Helm</a>
-            <a class="btn btn-ghost" href="https://github.com/mahdidarabi/karkive">View the source</a>
+            <a class="btn btn-ghost" href="https://github.com/code2z/karkive">View the source</a>
           </div>
           <ul class="engines-row" aria-label="Supported engines">
             <li>PostgreSQL</li>
@@ -324,7 +324,7 @@ app-postgres   postgres   0 2 * * *     Ready   <span class="ok">True</span>
         <header class="section-head">
           <p class="eyebrow">Engines</p>
           <h2>Three logical dumps and a file archive. One CR shape.</h2>
-          <p>Stream mode (the default) runs one image per engine, <code>ghcr.io/mahdidarabi/karkive-runner-&lt;engine&gt;</code>, with the client tools, zstd, gpg, age and rclone inside. Override it per CR with <code>spec.images.runner</code>. Stage mode runs upstream images: CloudNativePG PostgreSQL 18.4, MariaDB 10.6, Redis 7.4, Debian trixie-slim, BusyBox, <code>vladgh/gpg</code> and <code>rclone/rclone</code>.</p>
+          <p>Stream mode (the default) runs one image per engine, <code>ghcr.io/code2z/karkive-runner-&lt;engine&gt;</code>, with the client tools, zstd, gpg, age and rclone inside. Override it per CR with <code>spec.images.runner</code>. Stage mode runs upstream images: CloudNativePG PostgreSQL 18.4, MariaDB 10.6, Redis 7.4, Debian trixie-slim, BusyBox, <code>vladgh/gpg</code> and <code>rclone/rclone</code>.</p>
         </header>
         <div class="engine-grid">
           <article>
@@ -425,7 +425,7 @@ app-postgres   postgres   0 2 * * *     Ready   <span class="ok">True</span>
               <li>Ship the dashboard with <code>metrics.grafanaDashboard.enabled=true</code> or import <code>karkive.json</code></li>
               <li>Many clusters, one Prometheus: <code>metrics.grafanaDashboard.sourceLabel=cluster</code></li>
             </ol>
-            <a class="more" href="https://github.com/mahdidarabi/karkive/blob/main/charts/karkive/dashboards/karkive.json">Dashboard JSON ↗</a>
+            <a class="more" href="https://github.com/code2z/karkive/blob/main/charts/karkive/dashboards/karkive.json">Dashboard JSON ↗</a>
           </article>
         </div>
       </section>
@@ -435,7 +435,7 @@ app-postgres   postgres   0 2 * * *     Ready   <span class="ok">True</span>
         <header class="section-head">
           <p class="eyebrow">Install</p>
           <h2>Helm from GHCR.</h2>
-          <p>Current chart <strong id="ver">0.4.0</strong>. The operator image publishes to <code>ghcr.io/mahdidarabi/karkive</code>, Stream runners to <code>ghcr.io/mahdidarabi/karkive-runner-&lt;engine&gt;</code>, charts to <code>oci://ghcr.io/mahdidarabi/charts/karkive</code>.</p>
+          <p>Current chart <strong id="ver">0.4.0</strong>. The operator image publishes to <code>ghcr.io/code2z/karkive</code>, Stream runners to <code>ghcr.io/code2z/karkive-runner-&lt;engine&gt;</code>, charts to <code>oci://ghcr.io/code2z/charts/karkive</code>.</p>
         </header>
 
         <div class="install-grid">
@@ -448,11 +448,11 @@ app-postgres   postgres   0 2 * * *     Ready   <span class="ok">True</span>
               </div>
               <button type="button" class="copy" data-copy-active aria-label="Copy the selected command">Copy</button>
             </div>
-            <pre class="tab-panel" role="tabpanel" id="helm-install" aria-labelledby="tab-ih" tabindex="0"><code>helm install karkive oci://ghcr.io/mahdidarabi/charts/karkive \
+            <pre class="tab-panel" role="tabpanel" id="helm-install" aria-labelledby="tab-ih" tabindex="0"><code>helm install karkive oci://ghcr.io/code2z/charts/karkive \
   --version 0.4.0 \
   -n karkive-system --create-namespace</code></pre>
             <pre class="tab-panel" role="tabpanel" id="panel-im" aria-labelledby="tab-im" tabindex="0" hidden><code>helm upgrade --install karkive \
-  oci://ghcr.io/mahdidarabi/charts/karkive \
+  oci://ghcr.io/code2z/charts/karkive \
   --version 0.4.0 \
   -n karkive-system --create-namespace \
   --set metrics.serviceMonitor.enabled=true \
@@ -478,7 +478,7 @@ kubectl get crd backups.karkive.io \
             </li>
             <li>
               <h3>Declare</h3>
-              <p>Apply a Secret and a Backup in your app namespace, then watch <code>kubectl get bak</code>. Samples live in <a href="https://github.com/mahdidarabi/karkive/tree/main/config/samples"><code>config/samples</code></a>.</p>
+              <p>Apply a Secret and a Backup in your app namespace, then watch <code>kubectl get bak</code>. Samples live in <a href="https://github.com/code2z/karkive/tree/main/config/samples"><code>config/samples</code></a>.</p>
             </li>
           </ol>
         </div>
@@ -492,10 +492,10 @@ kubectl get crd backups.karkive.io \
           <span>Kubernetes-native backup &amp; restore.</span>
         </div>
         <ul>
-          <li><a href="https://github.com/mahdidarabi/karkive">GitHub</a></li>
-          <li><a href="https://github.com/mahdidarabi/karkive#readme">Docs</a></li>
-          <li><a href="https://github.com/mahdidarabi/karkive/tags">Releases</a></li>
-          <li><a href="https://github.com/mahdidarabi/karkive/pkgs/container/karkive">GHCR</a></li>
+          <li><a href="https://github.com/code2z/karkive">GitHub</a></li>
+          <li><a href="https://github.com/code2z/karkive#readme">Docs</a></li>
+          <li><a href="https://github.com/code2z/karkive/tags">Releases</a></li>
+          <li><a href="https://github.com/code2z/karkive/pkgs/container/karkive">GHCR</a></li>
         </ul>
         <p class="legal">&copy; <span id="year"></span> KArkive</p>
       </div>

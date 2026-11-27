@@ -5,4 +5,4 @@ type: application
 version: 0.4.0
 appVersion: "0.4.0"
 annotations:
-  org.opencontainers.image.source: https://github.com/mahdidarabi/karkive
+  org.opencontainers.image.source: https://github.com/code2z/karkive

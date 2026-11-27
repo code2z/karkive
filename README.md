@@ -1,11 +1,11 @@
 # KArkive
 
 [![Website](https://img.shields.io/badge/website-karkive.ir-c4a35a)](https://karkive.ir)
-[![CI](https://github.com/mahdidarabi/karkive/actions/workflows/ci.yaml/badge.svg)](https://github.com/mahdidarabi/karkive/actions/workflows/ci.yaml)
-[![Helm](https://img.shields.io/badge/Helm-0.4.0-0F1689?logo=helm)](https://github.com/mahdidarabi/karkive/pkgs/container/charts%2Fkarkive)
-[![Image](https://img.shields.io/badge/GHCR-karkive-blue?logo=github)](https://github.com/mahdidarabi/karkive/pkgs/container/karkive)
+[![CI](https://github.com/code2z/karkive/actions/workflows/ci.yaml/badge.svg)](https://github.com/code2z/karkive/actions/workflows/ci.yaml)
+[![Helm](https://img.shields.io/badge/Helm-0.4.0-0F1689?logo=helm)](https://github.com/code2z/karkive/pkgs/container/charts%2Fkarkive)
+[![Image](https://img.shields.io/badge/GHCR-karkive-blue?logo=github)](https://github.com/code2z/karkive/pkgs/container/karkive)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go)](https://go.dev/)
-[![Kubebuilder](https://img.shields.io/badge/API-karkive.io%2Fv1alpha1-326CE5?logo=kubernetes)](https://github.com/mahdidarabi/karkive/tree/main/api/v1alpha1)
+[![Kubebuilder](https://img.shields.io/badge/API-karkive.io%2Fv1alpha1-326CE5?logo=kubernetes)](https://github.com/code2z/karkive/tree/main/api/v1alpha1)
 
 Site: **[karkive.ir](https://karkive.ir)**
 
@@ -85,7 +85,7 @@ spec:
     compressionLevel: 3  # zstd 1-19
 ```
 
-Runner images are `ghcr.io/mahdidarabi/karkive-runner-<engine>` (built from `runner/<engine>/`) and ship the client tools, `zstd`, `gpg`, `age` and `rclone`. Override one per CR with `spec.images.runner`, or operator-wide with `defaults.runnerImages.<engine>`.
+Runner images are `ghcr.io/code2z/karkive-runner-<engine>` (built from `runner/<engine>/`) and ship the client tools, `zstd`, `gpg`, `age` and `rclone`. Override one per CR with `spec.images.runner`, or operator-wide with `defaults.runnerImages.<engine>`.
 
 ### Stage pipeline (`spec.pipeline.mode: Stage`)
 
@@ -131,7 +131,7 @@ spec:
 Current release: **`0.4.0`**
 
 ```bash
-helm install karkive oci://ghcr.io/mahdidarabi/charts/karkive \
+helm install karkive oci://ghcr.io/code2z/charts/karkive \
   --version 0.4.0 \
   -n karkive-system --create-namespace
 ```
@@ -139,7 +139,7 @@ helm install karkive oci://ghcr.io/mahdidarabi/charts/karkive \
 With Prometheus Operator scrape, alerts and a Grafana dashboard ConfigMap:
 
 ```bash
-helm upgrade --install karkive oci://ghcr.io/mahdidarabi/charts/karkive \
+helm upgrade --install karkive oci://ghcr.io/code2z/charts/karkive \
   --version 0.4.0 \
   -n karkive-system --create-namespace \
   --set metrics.serviceMonitor.enabled=true \
@@ -150,7 +150,7 @@ helm upgrade --install karkive oci://ghcr.io/mahdidarabi/charts/karkive \
 On GitOps (Argo CD, Flux), let cert-manager issue the webhook serving cert so Helm does not generate a new CA on every render. cert-manager must already be installed; if the Helm-generated Secret exists, delete it once so cert-manager can create it.
 
 ```bash
-helm upgrade --install karkive oci://ghcr.io/mahdidarabi/charts/karkive \
+helm upgrade --install karkive oci://ghcr.io/code2z/charts/karkive \
   --version 0.4.0 \
   -n karkive-system --create-namespace \
   --set webhook.certManager.enabled=true
@@ -301,7 +301,7 @@ spec:
     enabled: false
     size: 2Gi
   useLatestBackupAsFallback: true
-  dropDatabaseIfExists: true
+  dropDatabaseIfExists: true   # replace a non-empty target (default false)
   # encryption:
   #   method: age           # must match the Backup; needs age_identity in the Secret
 ```
@@ -311,7 +311,7 @@ spec:
 | `spec.backupFile` | empty | Specific S3 object name |
 | `spec.useLatestBackupAsFallback` | `true` | Newest object (by S3 upload time) matching the engine and encryption method when `backupFile` is empty or missing |
 | `spec.encryption.method` | `gpg` | Must match the Backup: `gpg` (`gpg_passphrase`) or `age` (`age_identity`) |
-| `spec.dropDatabaseIfExists` | `true` | Replace a non-empty target. When false, a non-empty target fails the Job |
+| `spec.dropDatabaseIfExists` | `false` | Replace a non-empty target. When false (the default), a non-empty target fails the Job; an empty or missing one is created |
 | `spec.stripPgAuditExtension` | `true` | Skip pgAudit extension, event-trigger and function DDL (Postgres) |
 | `spec.database.ownerRole` | `database.name` | Postgres owner of the recreated database |
 | `spec.persistence` | PVC, `1Gi` | Scratch. Postgres custom/directory dumps land here once, because `pg_restore --jobs` needs a seekable file; Redis writes the RDB here |
@@ -472,7 +472,7 @@ Operator-wide defaults (Helm `values.yaml` → flags):
 | --- | --- | --- |
 | `watchNamespace` | `WATCH_NAMESPACE` | all namespaces |
 | `leaderElection` | `--leader-elect` | `true` in the chart |
-| `defaults.runnerImages.<engine>` | `--runner-<engine>-image` | `ghcr.io/mahdidarabi/karkive-runner-<engine>:<runner/<engine>/TAG>`, e.g. `pg18.7-rclone1.76.0-r2` (Stream) |
+| `defaults.runnerImages.<engine>` | `--runner-<engine>-image` | `ghcr.io/code2z/karkive-runner-<engine>:<runner/<engine>/TAG>`, e.g. `pg18.7-rclone1.76.0-r2` (Stream) |
 | `defaults.s3.endpoint` | `--default-s3-endpoint` | empty (then required on the CR when S3 is on) |
 | `defaults.s3.bucket` | `--default-s3-bucket` | empty (then required on the CR when S3 is on) |
 | `defaults.busyboxImage` | `--busybox-image` | `busybox:1.37` (Stage) |
@@ -505,12 +505,12 @@ kubectl apply -f config/samples/karkive_v1alpha1_backup.yaml
 | `make manifests` | CRDs, RBAC and webhook manifests, plus the chart's CRD templates |
 | `make test` | `go test ./...` |
 | `make fmt vet` | `go fmt` / `go vet` |
-| `make docker-build` | Operator image (`IMG`, default `ghcr.io/mahdidarabi/karkive:dev`) |
+| `make docker-build` | Operator image (`IMG`, default `ghcr.io/code2z/karkive:dev`) |
 | `make install` / `uninstall` | Apply / delete CRDs |
 
 CI:
 
-- **CI** (`ci.yaml`, pushes to `main`, tags `v*` and PRs; `docs/` changes skip it): `make generate manifests fmt vet test`, failing on a dirty tree, then builds the `linux/amd64` operator image and lints the chart. Pushes to `main` publish `ghcr.io/mahdidarabi/karkive:latest`, `main` and `sha-<sha>`; tags `v*` publish semver tags and push the chart to `oci://ghcr.io/mahdidarabi/charts`.
+- **CI** (`ci.yaml`, pushes to `main`, tags `v*` and PRs; `docs/` changes skip it): `make generate manifests fmt vet test`, failing on a dirty tree, then builds the `linux/amd64` operator image and lints the chart. Pushes to `main` publish `ghcr.io/code2z/karkive:latest`, `main` and `sha-<sha>`; tags `v*` publish semver tags and push the chart to `oci://ghcr.io/code2z/charts`.
 - **Runners** (`runners.yaml`): builds `karkive-runner-<engine>` only when `runner/<engine>/` (or the shared rclone installer) changes. The tag comes from `runner/<engine>/TAG`, `<client><version>-rclone<version>-r<revision>`. A published tag is never overwritten, so bump a version or the `-r` revision with every Dockerfile change, then update `internal/config/config.go` and `defaults.runnerImages` in `values.yaml`.
 - **Pages** (`pages.yaml`): deploys `docs/` to [karkive.ir](https://karkive.ir).
 

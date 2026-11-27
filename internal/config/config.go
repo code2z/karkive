@@ -31,10 +31,10 @@ const (
 	// rclone for Stage-mode s3-sync and fetch (official image: Alpine, /bin/sh).
 	DefaultRcloneImage = "docker.io/rclone/rclone:1.76.0"
 	// Single container of pipeline mode Stream, one image per engine (runner/<engine>/Dockerfile, tag in runner/<engine>/TAG).
-	DefaultRunnerPostgresImage = "ghcr.io/mahdidarabi/karkive-runner-postgres:pg18.7-rclone1.76.0-r2"
-	DefaultRunnerMariaDBImage  = "ghcr.io/mahdidarabi/karkive-runner-mariadb:mariadb10.6.23-rclone1.76.0-r2"
-	DefaultRunnerRedisImage    = "ghcr.io/mahdidarabi/karkive-runner-redis:redis7.4.12-rclone1.76.0-r2"
-	DefaultRunnerPVCImage      = "ghcr.io/mahdidarabi/karkive-runner-pvc:trixie-rclone1.76.0-r2"
+	DefaultRunnerPostgresImage = "ghcr.io/code2z/karkive-runner-postgres:pg18.7-rclone1.76.0-r2"
+	DefaultRunnerMariaDBImage  = "ghcr.io/code2z/karkive-runner-mariadb:mariadb10.6.23-rclone1.76.0-r2"
+	DefaultRunnerRedisImage    = "ghcr.io/code2z/karkive-runner-redis:redis7.4.12-rclone1.76.0-r2"
+	DefaultRunnerPVCImage      = "ghcr.io/code2z/karkive-runner-pvc:trixie-rclone1.76.0-r2"
 	// Stage-mode encrypt/decrypt with encryption method age. The pvc runner (Debian, /bin/sh) ships age; the gpg image does not.
 	DefaultAgeImage     = DefaultRunnerPVCImage
 	DefaultMariaDBImage = "docker.io/library/mariadb:10.6"

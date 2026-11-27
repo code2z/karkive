@@ -1,5 +1,5 @@
 # Image of the operator (override in CI).
-IMG ?= ghcr.io/mahdidarabi/karkive:dev
+IMG ?= ghcr.io/code2z/karkive:dev
 
 # Tool versions
 CONTROLLER_TOOLS_VERSION ?= v0.17.3
