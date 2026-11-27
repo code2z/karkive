@@ -98,7 +98,27 @@ func ValidateRestoreSpec(spec RestoreSpec) error {
 	if err := validateEncryption(spec.Encryption); err != nil {
 		return err
 	}
+	if err := validateRedisRestoreMethod(spec); err != nil {
+		return err
+	}
 	return validatePipeline(spec.Pipeline)
+}
+
+func validateRedisRestoreMethod(spec RestoreSpec) error {
+	switch spec.RedisRestoreMethod {
+	case "":
+		return nil
+	case RedisRestorePullInTarget, RedisRestorePushToTarget:
+	default:
+		return fmt.Errorf("spec.redisRestoreMethod %q is invalid; must be PullInTarget or PushToTarget", spec.RedisRestoreMethod)
+	}
+	if spec.Engine != EngineRedis {
+		return fmt.Errorf("spec.redisRestoreMethod only applies to engine redis")
+	}
+	if spec.RedisRestoreMethod == RedisRestorePushToTarget && !spec.Pipeline.IsStream() {
+		return fmt.Errorf("spec.redisRestoreMethod PushToTarget needs spec.pipeline.mode Stream")
+	}
+	return nil
 }
 
 func validateEncryption(e *EncryptionSpec) error {

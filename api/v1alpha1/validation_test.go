@@ -171,6 +171,54 @@ func TestValidateRestoreSpec(t *testing.T) {
 	}
 }
 
+func TestValidateRestoreSpec_RedisRestoreMethod(t *testing.T) {
+	redis := RestoreSpec{
+		Engine:      EngineRedis,
+		Schedule:    "30 2 * * *",
+		Database:    DatabaseSpec{Host: "redis.example.svc.cluster.local", Name: "cache"},
+		S3:          S3Spec{Path: "cache/redisdump"},
+		SecretRef:   corev1.LocalObjectReference{Name: "restore-creds"},
+		RedisSecret: &SecretKeySelector{Name: "redis"},
+	}
+	if got := redis.EffectiveRedisRestoreMethod(); got != RedisRestorePullInTarget {
+		t.Fatalf("default method=%s, want PullInTarget", got)
+	}
+	for _, m := range []RedisRestoreMethod{RedisRestorePullInTarget, RedisRestorePushToTarget} {
+		s := redis
+		s.RedisRestoreMethod = m
+		if err := ValidateRestoreSpec(s); err != nil {
+			t.Errorf("%s: %v", m, err)
+		}
+	}
+	bad := redis
+	bad.RedisRestoreMethod = "Replicaof"
+	if err := ValidateRestoreSpec(bad); err == nil {
+		t.Error("expected reject for an unknown method")
+	}
+	stage := redis
+	stage.RedisRestoreMethod = RedisRestorePushToTarget
+	stage.Pipeline = &PipelineSpec{Mode: PipelineModeStage}
+	if err := ValidateRestoreSpec(stage); err == nil {
+		t.Error("expected reject for PushToTarget in Stage mode")
+	}
+	stage.RedisRestoreMethod = RedisRestorePullInTarget
+	if err := ValidateRestoreSpec(stage); err != nil {
+		t.Errorf("PullInTarget in Stage mode: %v", err)
+	}
+	pg := RestoreSpec{
+		Engine:             EnginePostgres,
+		Schedule:           "30 2 * * *",
+		Database:           DatabaseSpec{Host: "postgres.example.svc.cluster.local", Name: "app"},
+		S3:                 S3Spec{Path: "app/pgdump"},
+		SecretRef:          corev1.LocalObjectReference{Name: "restore-creds"},
+		PostgresSecret:     &SecretKeySelector{Name: "postgres"},
+		RedisRestoreMethod: RedisRestorePushToTarget,
+	}
+	if err := ValidateRestoreSpec(pg); err == nil {
+		t.Error("expected reject for redisRestoreMethod on engine postgres")
+	}
+}
+
 func boolPtr(v bool) *bool { return &v }
 
 func TestValidatePipeline(t *testing.T) {

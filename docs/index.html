@@ -339,7 +339,7 @@ app-postgres   postgres   0 2 * * *     Ready   <span class="ok">True</span>
           </article>
           <article>
             <h3>Redis</h3>
-            <p><code>redis-cli --rdb</code> on backup. Restore loads an ephemeral <code>redis-server</code> on <code>:6380</code> and has the target <code>REPLICAOF</code> it, so the target must reach the Job pod.</p>
+            <p><code>redis-cli --rdb</code> on backup. Restore loads an ephemeral <code>redis-server</code> on <code>:6380</code>, then the target <code>REPLICAOF</code>s it (<code>PullInTarget</code>) or the Job pushes every key out with <code>MIGRATE</code> (<code>PushToTarget</code>), for targets that cannot reach the pod.</p>
             <span class="tag-row"><span>backup</span><span>restore</span></span>
           </article>
           <article>

@@ -3,7 +3,6 @@
 ## Pipeline
 
 - [ ] Restore from local retained dumps (`spec.source: s3 | pvc`) when Backup skipped S3
-- [ ] Redis restore without an inbound connection: `REPLICAOF` needs the target to reach the Job pod on `:6380` (documented in the README). Load the RDB into the in-pod `redis-server` and push the keys out with `SCAN` + `MIGRATE`/`RESTORE`, at least as a fallback when that connection is blocked
 
 ## Speed and size (Stream mode)
 
@@ -114,6 +113,7 @@
 - [x] DRY bash: extract shared `log` / `wait_for` / `hold_until_job_done` / `mark_failed` into one sourced helper (embed `common.sh` for backup and restore)
 - [x] MariaDB dump/restore: `--hex-blob` / utf8mb4 / `--databases`; restore strips GTID/DEFINER and recreates with utf8mb4
 - [x] Redis restore: ephemeral `redis-server` + `REPLICAOF` (not SCAN+MIGRATE)
+- [x] Redis restore without an inbound connection: `spec.redisRestoreMethod: PushToTarget` copies the keys out with `SCAN` + `MIGRATE` from a `redis-server` bound to `127.0.0.1`; `PullInTarget` (`REPLICAOF`) stays the default
 - [x] Make S3 sync optional (`spec.s3.enabled`, default true). When false: skip the `s3-sync` container, do not require S3 secret keys or endpoint/bucket. Encrypt still writes `retained/` on the PVC.
 - [x] Pick the latest restore object by S3 LastModified (rclone `lsf --format tp`), not by name. Stream object names carry seconds
 

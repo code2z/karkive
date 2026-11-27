@@ -560,3 +560,28 @@ func TestPipelineDefaultsToStream(t *testing.T) {
 		t.Errorf("PIPELINE_MODE=%q", cm.Data["PIPELINE_MODE"])
 	}
 }
+
+func TestMutateRestoreConfigMap_RedisRestoreMethod(t *testing.T) {
+	for method, want := range map[karkivev1alpha1.RedisRestoreMethod]string{
+		"":                                       "PullInTarget",
+		karkivev1alpha1.RedisRestorePullInTarget: "PullInTarget",
+		karkivev1alpha1.RedisRestorePushToTarget: "PushToTarget",
+	} {
+		r := testRedisRestore()
+		r.Spec.RedisRestoreMethod = method
+		cm := &corev1.ConfigMap{}
+		if err := MutateRestoreConfigMap(cm, r, config.Config{}); err != nil {
+			t.Fatal(err)
+		}
+		if got := cm.Data["REDIS_RESTORE_METHOD"]; got != want {
+			t.Errorf("method %q: REDIS_RESTORE_METHOD=%q, want %q", method, got, want)
+		}
+	}
+	cm := &corev1.ConfigMap{}
+	if err := MutateRestoreConfigMap(cm, testRestore(), config.Config{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := cm.Data["REDIS_RESTORE_METHOD"]; ok {
+		t.Error("REDIS_RESTORE_METHOD set for engine postgres")
+	}
+}

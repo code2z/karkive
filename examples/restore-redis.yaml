@@ -17,6 +17,7 @@ spec:
     path: cache/redisdump
   secretRef:
     name: restore-cache-redis
+  # redisRestoreMethod: PushToTarget  # target cannot reach the Job pod: copy keys out with MIGRATE (default PullInTarget = REPLICAOF)
   redisSecret:
     name: redis
     usernameKey: username

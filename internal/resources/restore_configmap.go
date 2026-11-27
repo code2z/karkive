@@ -39,6 +39,7 @@ func MutateRestoreConfigMap(cm *corev1.ConfigMap, restore *karkivev1alpha1.Resto
 		cm.Data["REDIS_HOST"] = restore.Spec.Database.Host
 		cm.Data["REDIS_PORT"] = strconv.Itoa(int(port))
 		cm.Data["REDIS_NAME"] = restore.Spec.Database.Name
+		cm.Data["REDIS_RESTORE_METHOD"] = string(restore.Spec.EffectiveRedisRestoreMethod())
 	default:
 		cm.Data["PGHOST"] = restore.Spec.Database.Host
 		cm.Data["PGPORT"] = strconv.Itoa(int(port))

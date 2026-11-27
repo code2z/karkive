@@ -262,6 +262,11 @@ func TestStreamScripts(t *testing.T) {
 			"--jobs=",
 			"timescaledb_pre_restore",
 			"decompress_stream",
+			"REDIS_RESTORE_METHOD",
+			"redis_pull_in_target",
+			"redis_push_to_target",
+			"COPY",
+			"REPLACE",
 		},
 	} {
 		s, err := StreamScript(name)

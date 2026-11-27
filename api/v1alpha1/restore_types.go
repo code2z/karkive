@@ -16,6 +16,17 @@ type RestoreResources struct {
 	Stream *corev1.ResourceRequirements `json:"stream,omitempty"`
 }
 
+// RedisRestoreMethod selects how a Redis restore moves the dataset from the Job pod into the target.
+// +kubebuilder:validation:Enum=PullInTarget;PushToTarget
+type RedisRestoreMethod string
+
+const (
+	// RedisRestorePullInTarget loads the RDB into a redis-server in the Job pod (:6380) and has the target REPLICAOF it, then promotes the target. The target must connect to the Job pod and allow REPLICAOF and CONFIG SET. Default.
+	RedisRestorePullInTarget RedisRestoreMethod = "PullInTarget"
+	// RedisRestorePushToTarget loads the RDB into a redis-server in the Job pod that listens on 127.0.0.1 only, then copies every key to the target with SCAN + MIGRATE COPY REPLACE. Only the Job pod connects out; the target needs RESTORE, plus FLUSHALL to replace a non-empty dataset. Stream mode only.
+	RedisRestorePushToTarget RedisRestoreMethod = "PushToTarget"
+)
+
 // RestoreSpec defines the desired state of Restore.
 type RestoreSpec struct {
 	// Engine of the restore target.
@@ -81,6 +92,9 @@ type RestoreSpec struct {
 	// DropDatabaseIfExists drops and recreates a non-empty target before restore (Redis: replaces its dataset). Default false: a non-empty target fails the restore.
 	DropDatabaseIfExists *bool `json:"dropDatabaseIfExists,omitempty"`
 
+	// RedisRestoreMethod (engine redis only) is PullInTarget (default: the target REPLICAOFs a redis-server in the Job pod, so it must reach the pod on :6380) or PushToTarget (the Job pod copies every key to the target with SCAN + MIGRATE; Stream mode only).
+	RedisRestoreMethod RedisRestoreMethod `json:"redisRestoreMethod,omitempty"`
+
 	// StripPgAuditExtension removes pgAudit extension, event-trigger, and
 	// function DDL from dumps. Default true.
 	StripPgAuditExtension *bool `json:"stripPgAuditExtension,omitempty"`
@@ -102,6 +116,14 @@ type RestoreSpec struct {
 
 	// Component is the app.kubernetes.io/component label. Defaults to metadata.name.
 	Component string `json:"component,omitempty"`
+}
+
+// EffectiveRedisRestoreMethod is PullInTarget when RedisRestoreMethod is unset.
+func (s RestoreSpec) EffectiveRedisRestoreMethod() RedisRestoreMethod {
+	if s.RedisRestoreMethod == "" {
+		return RedisRestorePullInTarget
+	}
+	return s.RedisRestoreMethod
 }
 
 const (

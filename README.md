@@ -312,6 +312,7 @@ spec:
 | `spec.useLatestBackupAsFallback` | `true` | Newest object (by S3 upload time) matching the engine and encryption method when `backupFile` is empty or missing |
 | `spec.encryption.method` | `gpg` | Must match the Backup: `gpg` (`gpg_passphrase`) or `age` (`age_identity`) |
 | `spec.dropDatabaseIfExists` | `false` | Replace a non-empty target. When false (the default), a non-empty target fails the Job; an empty or missing one is created |
+| `spec.redisRestoreMethod` | `PullInTarget` | Redis only: `PullInTarget` (the target `REPLICAOF`s the Job pod) or `PushToTarget` (the Job pod copies the keys to the target; Stream only). See below |
 | `spec.stripPgAuditExtension` | `true` | Skip pgAudit extension, event-trigger and function DDL (Postgres) |
 | `spec.database.ownerRole` | `database.name` | Postgres owner of the recreated database |
 | `spec.persistence` | PVC, `1Gi` | Scratch. Postgres custom/directory dumps land here once, because `pg_restore --jobs` needs a seekable file; Redis writes the RDB here |
@@ -325,7 +326,10 @@ Per engine:
 
 - **Postgres.** The target database is recreated from `template0` with `ownerRole` as owner. Roles the dump references are created `NOLOGIN` when missing. Database and owner names must match `[A-Za-z0-9_-]+`.
 - **MariaDB.** The database is recreated with utf8mb4, any target name works, and `DEFINER`s become `CURRENT_USER`; GTID and `SQL_LOG_BIN` lines are dropped.
-- **Redis.** The RDB loads into a `redis-server` in the Job pod on `:6380`; the target runs `REPLICAOF` against it, then `REPLICAOF NO ONE`. The target must be able to connect to the Job pod and allow `REPLICAOF` and `CONFIG SET`. A non-empty target is replaced only with `dropDatabaseIfExists`.
+- **Redis.** The RDB loads into a `redis-server` in the Job pod on `:6380`, then `spec.redisRestoreMethod` moves it into the target. A non-empty target (keys in any database) is replaced only with `dropDatabaseIfExists`.
+  - `PullInTarget` (default): the target runs `REPLICAOF` against the Job pod, then `REPLICAOF NO ONE`. It must be able to connect to the Job pod on `:6380` and allow `REPLICAOF` and `CONFIG SET`. Fast, one bulk transfer.
+  - `PushToTarget`: the in-pod server listens on `127.0.0.1` only, and the Job copies every database with `SCAN` + `MIGRATE COPY REPLACE` (100 keys per call, TTLs kept). Only the Job pod connects out, so it works through NetworkPolicies, to targets outside the cluster and to services that block `REPLICAOF`. The target needs `RESTORE`, plus `FLUSHALL` to replace a non-empty dataset. Clients see the target fill up rather than switch in one step. Keys containing a newline are not copied; the key count check then fails the Job. Stream mode only.
+  - Either way the Job pod holds the whole dataset in memory; raise `spec.resources.stream` for large datasets.
 
 ## Secrets
 

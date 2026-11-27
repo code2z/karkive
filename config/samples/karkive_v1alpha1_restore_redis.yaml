@@ -1,6 +1,7 @@
 # Generic Redis restore sample. Apply after a Backup has written RDB dumps to S3
 # and a target Redis is reachable from this namespace.
-# Restore replaces a non-empty target via REPLICAOF only when spec.dropDatabaseIfExists is true (default false).
+# Restore replaces a non-empty target only when spec.dropDatabaseIfExists is true (default false).
+# spec.redisRestoreMethod: PullInTarget (default) has the target REPLICAOF the Job pod on :6380; PushToTarget copies the keys out with MIGRATE when the target cannot reach the pod.
 apiVersion: karkive.io/v1alpha1
 kind: Restore
 metadata:

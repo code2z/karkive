@@ -205,9 +205,16 @@ restore_mariadb() {
   log "mariadb load in $(elapsed "$t")"
 }
 
-# Redis: load the RDB into a temporary redis-server in this pod (:6380), have the target REPLICAOF it, then promote the target. The target must reach the Job pod on :6380.
+# Redis: load the RDB into a temporary redis-server in this pod (:6380), then move the data into the target by REDIS_RESTORE_METHOD:
+#   PullInTarget (default): the target REPLICAOFs the pod, then is promoted. The target must reach the Job pod on :6380.
+#   PushToTarget: the server listens on 127.0.0.1 only and copies every key to the target with SCAN + MIGRATE; only the pod connects out.
 restore_redis() {
   : "${REDIS_HOST:?}"
+  local method="${REDIS_RESTORE_METHOD:-PullInTarget}"
+  case "${method}" in
+    PullInTarget|PushToTarget) ;;
+    *) die "unknown REDIS_RESTORE_METHOD ${method} (PullInTarget or PushToTarget)" ;;
+  esac
   local user_args=()
   if [ -n "${REDIS_USERNAME:-}" ] && [ "${REDIS_USERNAME}" != "default" ]; then
     user_args=(--user "${REDIS_USERNAME}")
@@ -216,18 +223,23 @@ restore_redis() {
   target() { redis-cli -h "${REDIS_HOST}" -p "${REDIS_PORT:-6379}" "${user_args[@]}" "$@"; }
   local_redis() { env -u REDISCLI_AUTH redis-cli -h 127.0.0.1 -p 6380 "$@"; }
 
+  # All databases count, not only db0: both methods replace the whole dataset.
   local keys
-  keys="$(target DBSIZE | tr -d '\r')"
+  keys="$(redis_keyspace target | awk '{s += $2} END {print s + 0}')"
   if [ "${keys}" != 0 ] && ! drop_allowed; then
     die "target redis has ${keys} keys; set dropDatabaseIfExists to replace it"
   fi
 
-  local dir="${RUN_DIR}/redis"
+  local dir="${RUN_DIR}/redis" bind=0.0.0.0 protected=no
+  if [ "${method}" = PushToTarget ]; then
+    bind=127.0.0.1
+    protected=yes
+  fi
   mkdir -p "${dir}"
   log "download | decrypt | decompress → ${dir}/dump.rdb"
   fetch | decompress_stream "${OBJ}" > "${dir}/dump.rdb"
-  log "RDB $(human "$(stat -c %s "${dir}/dump.rdb")"); starting redis-server on :6380"
-  redis-server --daemonize yes --port 6380 --bind 0.0.0.0 --protected-mode no --dir "${dir}" --dbfilename dump.rdb \
+  log "RDB $(human "$(stat -c %s "${dir}/dump.rdb")"); starting redis-server on ${bind}:6380"
+  redis-server --daemonize yes --port 6380 --bind "${bind}" --protected-mode "${protected}" --dir "${dir}" --dbfilename dump.rdb \
     --appendonly no --save "" --logfile "${dir}/server.log"
   local i=0
   until [ "$(local_redis INFO persistence 2>/dev/null | tr -d '\r' | sed -n 's/^loading://p')" = 0 ]; do
@@ -235,14 +247,29 @@ restore_redis() {
     [ "$i" -le 1800 ] || { tail -n 20 "${dir}/server.log" >&2 || true; die "redis-server did not finish loading the RDB"; }
     sleep 1
   done
-  local src_keys pod_ip
+  log "loaded $(local_redis DBSIZE | tr -d '\r') keys in db0 ($(redis_keyspace local_redis | awk '{s += $2} END {print s + 0}') in all databases)"
+  if [ "${method}" = PushToTarget ]; then
+    redis_push_to_target "${keys}"
+  else
+    redis_pull_in_target
+  fi
+  local_redis SHUTDOWN NOSAVE > /dev/null 2>&1 || true
+}
+
+# "<db> <keys> <expires>" per non-empty database, from INFO keyspace of a client function (target or local_redis).
+redis_keyspace() {
+  "$1" INFO keyspace | tr -d '\r' | sed -n 's/^db\([0-9]*\):keys=\([0-9]*\),expires=\([0-9]*\).*/\1 \2 \3/p'
+}
+
+# PullInTarget: the target replicates the in-pod server, then is promoted.
+redis_pull_in_target() {
+  local src_keys pod_ip i=0
   src_keys="$(local_redis DBSIZE | tr -d '\r')"
   pod_ip="$(hostname -i | awk '{print $1}')"
   [ -n "${pod_ip}" ] || die "cannot find the pod IP for REPLICAOF"
-  log "loaded ${src_keys} keys; target ${REDIS_HOST} REPLICAOF ${pod_ip} 6380"
+  log "target ${REDIS_HOST} REPLICAOF ${pod_ip} 6380"
   target CONFIG SET masterauth "" > /dev/null
   target REPLICAOF "${pod_ip}" 6380 > /dev/null
-  i=0
   while :; do
     local info link sync
     info="$(target INFO replication | tr -d '\r')"
@@ -258,7 +285,62 @@ restore_redis() {
   done
   target REPLICAOF NO ONE > /dev/null
   log "target promoted; DBSIZE $(target DBSIZE | tr -d '\r') (RDB ${src_keys}; keys with TTL may have expired)"
-  local_redis SHUTDOWN NOSAVE > /dev/null 2>&1 || true
+}
+
+# PushToTarget: copy each database of the in-pod server into the same database of the target, 100 keys per MIGRATE COPY REPLACE.
+# The commands reach the local server as raw RESP through redis-cli --pipe, so keys travel byte for byte and the target password is never a process argument.
+# Keys are listed with --scan, one per line: a key that contains a newline is not copied, and the key count check below then fails the restore.
+redis_push_to_target() {
+  local target_keys="$1" db n exp t got
+  if [ "${target_keys}" != 0 ]; then
+    log "target has ${target_keys} keys; FLUSHALL (dropDatabaseIfExists)"
+    target FLUSHALL > /dev/null
+  fi
+  redis_keyspace local_redis > "${RUN_DIR}/keyspace"
+  if [ ! -s "${RUN_DIR}/keyspace" ]; then
+    log "RDB holds no keys; nothing to push"
+    return 0
+  fi
+  while read -r db n exp <&3; do
+    t=$(date +%s)
+    log "db${db}: pushing ${n} keys to ${REDIS_HOST}:${REDIS_PORT:-6379} with MIGRATE"
+    if ! {
+      printf '*2\r\n$6\r\nSELECT\r\n$%d\r\n%s\r\n' "${#db}" "${db}"
+      local_redis -n "${db}" --scan --count 1000 < /dev/null | redis_migrate_resp "${db}"
+    } | local_redis --pipe --pipe-timeout 0 > "${RUN_DIR}/push.out" 2> "${RUN_DIR}/push.err"; then
+      while IFS= read -r line; do log "MIGRATE: ${line}"; done < <(head -n 20 "${RUN_DIR}/push.err")
+      die "db${db}: push to ${REDIS_HOST} failed ($(tail -n 1 "${RUN_DIR}/push.out" | tr -d '\r'))"
+    fi
+    # Keys without a TTL cannot expire on the way, so the target must hold at least those.
+    got="$(redis_keyspace target | awk -v db="${db}" '$1 == db {print $2}')"
+    got="${got:-0}"
+    if [ "${got}" -lt $((n - exp)) ]; then
+      die "db${db}: target holds ${got} keys, expected at least $((n - exp)) (keys without a TTL); keys containing a newline are not copied"
+    fi
+    log "db${db}: target holds ${got} keys (RDB ${n}, ${exp} with a TTL) after $(elapsed "$t")"
+  done 3< "${RUN_DIR}/keyspace"
+}
+
+# RESP for MIGRATE <host> <port> "" <db> 60000 COPY REPLACE [AUTH <pass> | AUTH2 <user> <pass>] KEYS <k1> … <k100>, one key per input line.
+# The credentials come from ENVIRON, not argv. LC_ALL=C makes length() count bytes.
+redis_migrate_resp() {
+  LC_ALL=C awk -v db="$1" -v host="${REDIS_HOST}" -v port="${REDIS_PORT:-6379}" '
+    function bulk(s) { return "$" length(s) "\r\n" s "\r\n" }
+    function flush(   i) {
+      if (count == 0) return
+      printf "*%d\r\n%s%s%s", 9 + nauth + count, head, auth, bulk("KEYS")
+      for (i = 1; i <= count; i++) printf "%s", bulk(keys[i])
+      count = 0
+    }
+    BEGIN {
+      head = bulk("MIGRATE") bulk(host) bulk(port) bulk("") bulk(db) bulk("60000") bulk("COPY") bulk("REPLACE")
+      user = ENVIRON["REDIS_USERNAME"]; pass = ENVIRON["REDIS_PASSWORD"]
+      if (pass == "") { nauth = 0; auth = "" }
+      else if (user != "" && user != "default") { nauth = 3; auth = bulk("AUTH2") bulk(user) bulk(pass) }
+      else { nauth = 2; auth = bulk("AUTH") bulk(pass) }
+    }
+    { keys[++count] = $0; if (count == 100) flush() }
+    END { flush() }'
 }
 
 case "${ENGINE}" in

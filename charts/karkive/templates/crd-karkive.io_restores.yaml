@@ -393,6 +393,15 @@ spec:
                 required:
                 - name
                 type: object
+              redisRestoreMethod:
+                description: 'RedisRestoreMethod (engine redis only) is PullInTarget
+                  (default: the target REPLICAOFs a redis-server in the Job pod, so
+                  it must reach the pod on :6380) or PushToTarget (the Job pod copies
+                  every key to the target with SCAN + MIGRATE; Stream mode only).'
+                enum:
+                - PullInTarget
+                - PushToTarget
+                type: string
               redisSecret:
                 description: RedisSecret is the target Redis Secret (username optional
                   ACL, password).
