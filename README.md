@@ -2,7 +2,7 @@
 
 [![Website](https://img.shields.io/badge/website-karkive.ir-c4a35a)](https://karkive.ir)
 [![CI](https://github.com/code2z/karkive/actions/workflows/ci.yaml/badge.svg)](https://github.com/code2z/karkive/actions/workflows/ci.yaml)
-[![Helm](https://img.shields.io/badge/Helm-0.4.0-0F1689?logo=helm)](https://github.com/code2z/karkive/pkgs/container/charts%2Fkarkive)
+[![Helm](https://img.shields.io/badge/Helm-0.4.1-0F1689?logo=helm)](https://github.com/code2z/karkive/pkgs/container/charts%2Fkarkive)
 [![Image](https://img.shields.io/badge/GHCR-karkive-blue?logo=github)](https://github.com/code2z/karkive/pkgs/container/karkive)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go)](https://go.dev/)
 [![Kubebuilder](https://img.shields.io/badge/API-karkive.io%2Fv1alpha1-326CE5?logo=kubernetes)](https://github.com/code2z/karkive/tree/main/api/v1alpha1)
@@ -128,11 +128,11 @@ spec:
 
 ## Install
 
-Current release: **`0.4.0`**
+Current release: **`0.4.1`**
 
 ```bash
 helm install karkive oci://ghcr.io/code2z/charts/karkive \
-  --version 0.4.0 \
+  --version 0.4.1 \
   -n karkive-system --create-namespace
 ```
 
@@ -140,7 +140,7 @@ With Prometheus Operator scrape, alerts and a Grafana dashboard ConfigMap:
 
 ```bash
 helm upgrade --install karkive oci://ghcr.io/code2z/charts/karkive \
-  --version 0.4.0 \
+  --version 0.4.1 \
   -n karkive-system --create-namespace \
   --set metrics.serviceMonitor.enabled=true \
   --set metrics.prometheusRule.enabled=true \
@@ -151,7 +151,7 @@ On GitOps (Argo CD, Flux), let cert-manager issue the webhook serving cert so He
 
 ```bash
 helm upgrade --install karkive oci://ghcr.io/code2z/charts/karkive \
-  --version 0.4.0 \
+  --version 0.4.1 \
   -n karkive-system --create-namespace \
   --set webhook.certManager.enabled=true
 ```
