@@ -6,7 +6,7 @@
     <title>KArkive — Kubernetes operator for logical backups</title>
     <meta
       name="description"
-      content="KArkive is a Kubernetes operator for scheduled logical backups and restores. Declare a Backup or Restore CR; it dumps, compresses, GPG-encrypts and uploads to S3 with rclone, streamed in one pipe or stage by stage. PostgreSQL, MariaDB, Redis, and PVC files."
+      content="KArkive is a Kubernetes operator for scheduled logical backups and restores. Declare a Backup or Restore CR; it dumps, compresses, encrypts with GPG or age and uploads to S3 with rclone, streamed in one pipe or stage by stage. PostgreSQL, MariaDB, Redis, and PVC files."
     />
     <link rel="canonical" href="https://karkive.ir/" />
     <script>
@@ -28,7 +28,7 @@
     <meta property="og:title" content="KArkive — Kubernetes operator for logical backups" />
     <meta
       property="og:description"
-      content="Declare a Backup or Restore CR. KArkive dumps, compresses, GPG-encrypts and uploads to S3 with rclone, streamed with no plain dump on disk, or stage by stage. PostgreSQL, MariaDB, Redis, and PVC files."
+      content="Declare a Backup or Restore CR. KArkive dumps, compresses, encrypts with GPG or age and uploads to S3 with rclone, streamed with no plain dump on disk, or stage by stage. PostgreSQL, MariaDB, Redis, and PVC files."
     />
     <meta property="og:locale" content="en_US" />
     <meta name="twitter:card" content="summary" />
@@ -86,7 +86,7 @@
           <p class="eyebrow">Kubernetes operator · <code>karkive.io/v1alpha1</code></p>
           <h1><span class="nb">You declare a <em>Backup</em>.</span><br />KArkive runs the archive.</h1>
           <p class="lede">
-            Scheduled logical backups and restores, in-cluster. Each CR becomes a CronJob whose pod dumps, compresses, GPG-encrypts and uploads to S3 with rclone, streamed in a single pipe or one container per stage, and runs the same pipeline in reverse to restore.
+            Scheduled logical backups and restores, in-cluster. Each CR becomes a CronJob whose pod dumps, compresses, encrypts with GPG or age and uploads to S3 with rclone, streamed in a single pipe or one container per stage, and runs the same pipeline in reverse to restore.
           </p>
           <div class="cta">
             <a class="btn btn-primary" href="#install">Install with Helm</a>
@@ -138,7 +138,7 @@ app-postgres   postgres   0 2 * * *     Ready   <span class="ok">True</span>
         </article>
         <article>
           <h2>Standard artifacts</h2>
-          <p>Dumps are <code>pg_dump</code>, <code>mysqldump</code>, RDB or <code>tar</code>, then gzip or zstd and GPG. You can restore without KArkive.</p>
+          <p>Dumps are <code>pg_dump</code>, <code>mysqldump</code>, RDB or <code>tar</code>, then zstd or gzip and GPG or age. You can restore without KArkive.</p>
         </article>
         <article>
           <h2>Uploads are not undone</h2>
@@ -173,27 +173,27 @@ app-postgres   postgres   0 2 * * *     Ready   <span class="ok">True</span>
               <li><b>cleanup</b><span>Clears old run dirs and local dumps past <code>localRetentionDays</code></span><small>runner</small></li>
               <li><b>dump</b><span><code>pg_dump --format=custom</code> (or <code>directory --jobs</code>), <code>mariadb-dump</code>, <code>redis-cli --rdb -</code> or <code>tar</code></span><small>runner</small></li>
               <li><b>compress</b><span>zstd inside <code>pg_dump</code>; <code>zstd -T0</code> for the other engines</span><small>runner</small></li>
-              <li><b>encrypt</b><span><code>gpg</code> on the stream, same <code>gpg_passphrase</code></span><small>runner</small></li>
+              <li><b>encrypt</b><span><code>gpg</code> with <code>gpg_passphrase</code>, or <code>age</code> to the public key in <code>age_recipient</code></span><small>runner</small></li>
               <li><b>upload</b><span><code>rclone rcat</code> multipart into S3, then best-effort prune past <code>retentionDays</code></span><small>runner</small></li>
             </ol>
-            <p class="note">Stream is the default <code>spec.pipeline.mode</code>: one container, <code>dump | compress | gpg | rclone rcat</code>, with no plain dump on disk. Tune it with <code>pipeline.jobs</code> and <code>pipeline.compressionLevel</code> (zstd 1–19).</p>
+            <p class="note">Stream is the default <code>spec.pipeline.mode</code>: one container, <code>dump | compress | encrypt | rclone rcat</code>, with no plain dump on disk. Tune it with <code>pipeline.jobs</code> and <code>pipeline.compressionLevel</code> (zstd 1–19).</p>
           </div>
           <div class="tab-panel" role="tabpanel" id="panel-psr" aria-labelledby="tab-psr" hidden>
             <ol class="stages">
               <li><b>fetch</b><span><code>rclone cat</code> of the named or newest object</span><small>runner</small></li>
-              <li><b>decrypt</b><span><code>gpg -d</code> on the stream</span><small>runner</small></li>
+              <li><b>decrypt</b><span><code>gpg -d</code>, or <code>age -d</code> with the private key in <code>age_identity</code></span><small>runner</small></li>
               <li><b>decompress</b><span>zstd, or gunzip for Stage objects; Postgres dumps stay compressed for <code>pg_restore</code></span><small>runner</small></li>
               <li><b>load</b><span><code>pg_restore --jobs</code>, streamed into <code>mariadb</code>, or an in-pod <code>redis-server</code> the target <code>REPLICAOF</code>s</span><small>runner</small></li>
               <li><b>analyze</b><span>Postgres: <code>vacuumdb --analyze-only</code>, TimescaleDB <code>ALTER EXTENSION UPDATE</code></span><small>runner</small></li>
             </ol>
-            <p class="note">A Stream Restore also reads Stage objects (<code>*.gz.gpg</code>), so switch the Restore first and the Backup later. A Stage Restore cannot read Stream objects.</p>
+            <p class="note">A Stream Restore also reads Stage objects (<code>*.gz.gpg</code> / <code>*.gz.age</code>), so switch the Restore first and the Backup later. A Stage Restore cannot read Stream objects.</p>
           </div>
           <div class="tab-panel" role="tabpanel" id="panel-pb" aria-labelledby="tab-pb" hidden>
             <ol class="stages">
               <li><b>cleanup</b><span>Clears markers, prunes local dumps past <code>localRetentionDays</code></span><small>busybox</small></li>
               <li><b>dump</b><span><code>pg_dump</code>, <code>mysqldump</code>, <code>redis-cli --rdb</code> or <code>tar</code> of a PVC</span><small>engine image</small></li>
               <li><b>compress</b><span>gzip of the dump or archive</span><small>busybox</small></li>
-              <li><b>encrypt</b><span>Symmetric GPG with <code>gpg_passphrase</code></span><small>gpg</small></li>
+              <li><b>encrypt</b><span>Symmetric GPG with <code>gpg_passphrase</code>, or age</span><small>gpg / age</small></li>
               <li><b>s3-sync</b><span><code>rclone copy</code> to S3, then <code>rclone delete --min-age</code> past <code>retentionDays</code></span><small>rclone</small></li>
             </ol>
             <p class="note">Stage is opt-in with <code>spec.pipeline.mode: Stage</code>. Set <code>spec.s3.enabled: false</code> to skip <code>s3-sync</code> and keep encrypted dumps in <code>retained/</code> on the PVC.</p>
@@ -202,11 +202,11 @@ app-postgres   postgres   0 2 * * *     Ready   <span class="ok">True</span>
             <ol class="stages">
               <li><b>cleanup</b><span>Clears the workdir and markers</span><small>busybox</small></li>
               <li><b>fetch</b><span>Named object, or the newest dump by S3 LastModified with <code>useLatestBackupAsFallback</code></span><small>rclone</small></li>
-              <li><b>decrypt</b><span>GPG with the same passphrase</span><small>gpg</small></li>
+              <li><b>decrypt</b><span>GPG with the same passphrase, or age</span><small>gpg / age</small></li>
               <li><b>extract</b><span>gunzip to a plain dump</span><small>busybox</small></li>
               <li><b>restore</b><span><code>psql</code>, <code>mariadb</code>, or <code>REPLICAOF</code> from an ephemeral Redis</span><small>engine image</small></li>
             </ol>
-            <p class="note">Restore reads S3 and GPG keys from <code>secretRef</code> and target credentials from a separate engine Secret.</p>
+            <p class="note">Restore reads S3 keys and the decryption key from <code>secretRef</code> and target credentials from a separate engine Secret.</p>
           </div>
         </div>
 
@@ -324,7 +324,7 @@ app-postgres   postgres   0 2 * * *     Ready   <span class="ok">True</span>
         <header class="section-head">
           <p class="eyebrow">Engines</p>
           <h2>Three logical dumps and a file archive. One CR shape.</h2>
-          <p>Stream mode (the default) runs one image per engine, <code>ghcr.io/mahdidarabi/karkive-runner-&lt;engine&gt;</code>, with the client tools, zstd, gpg and rclone inside. Override it per CR with <code>spec.images.runner</code>. Stage mode runs upstream images: CloudNativePG PostgreSQL 18.4, MariaDB 10.6, Redis 7.4, Debian trixie-slim, BusyBox, <code>vladgh/gpg</code> and <code>rclone/rclone</code>.</p>
+          <p>Stream mode (the default) runs one image per engine, <code>ghcr.io/mahdidarabi/karkive-runner-&lt;engine&gt;</code>, with the client tools, zstd, gpg, age and rclone inside. Override it per CR with <code>spec.images.runner</code>. Stage mode runs upstream images: CloudNativePG PostgreSQL 18.4, MariaDB 10.6, Redis 7.4, Debian trixie-slim, BusyBox, <code>vladgh/gpg</code> and <code>rclone/rclone</code>.</p>
         </header>
         <div class="engine-grid">
           <article>
@@ -344,7 +344,7 @@ app-postgres   postgres   0 2 * * *     Ready   <span class="ok">True</span>
           </article>
           <article>
             <h3>PVC files</h3>
-            <p><code>engine: pvc</code>: GNU <code>tar</code> of an existing claim, mounted read-only, with <code>path</code> and <code>excludes</code>. <code>consumerSelector</code> places the Job beside the pod that owns an RWO claim. Restore is manual: <code>gpg -d | tar -x</code>.</p>
+            <p><code>engine: pvc</code>: GNU <code>tar</code> of an existing claim, mounted read-only, with <code>path</code> and <code>excludes</code>. <code>consumerSelector</code> places the Job beside the pod that owns an RWO claim. Restore is manual: <code>gpg -d | zstd -d | tar -x</code> (or <code>age -d</code>).</p>
             <span class="tag-row"><span>backup</span></span>
           </article>
         </div>

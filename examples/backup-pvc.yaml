@@ -1,4 +1,4 @@
-# Archive the files of an existing PVC (tar → gzip → gpg → S3).
+# Archive the files of an existing PVC (tar | zstd | gpg or age → S3).
 # The Backup must live in the claim's namespace; the claim is mounted read-only.
 apiVersion: karkive.io/v1alpha1
 kind: Backup
@@ -25,8 +25,8 @@ spec:
     path: nextcloud/pvcdump
     retentionDays: 14
   secretRef:
-    name: backup-nextcloud-data # gpg_passphrase, s3_access_key, s3_secret_key
+    name: backup-nextcloud-data # gpg_passphrase (or age_recipient), s3_access_key, s3_secret_key
   persistence:
     enabled: true
-    size: 50Gi                  # scratch: uncompressed tar + .tar.gz + retained/ copies
+    size: 50Gi                  # Stream streams to S3; size for retained/ copies with S3 off (Stage also holds the .tar and .tar.gz)
   localRetentionDays: 2
